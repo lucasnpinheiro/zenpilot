@@ -12,7 +12,8 @@ from pathlib import Path
 ZEN_APP = Path("/Applications/Zen.app")
 ZEN_BIN = ZEN_APP / "Contents/MacOS/zen"
 ZEN_DIR = Path("~/Library/Application Support/zen").expanduser()
-DEFAULT_PROFILE = "zenpilot"  # the dedicated, logged-out profile zenpilot creates
+ZEN_DEFAULT = "default"  # Zen's own default profile (the one a plain Zen start opens): the user's everyday one
+DEFAULT_PROFILE = "zenpilot"  # the optional dedicated, logged-out profile zenpilot can create
 
 # With remote debugging, Firefox's remote agent rewrites ~40 prefs for test automation
 # (Safe Browsing, password saving, popup blocker, ...) and Zen persists them. This stops it.
@@ -46,6 +47,16 @@ def profile_path(name: str) -> Path | None:
     return _profiles().get(name)
 
 
+def install_default_path() -> Path | None:
+    """The profile Zen opens when started without -P: the [Install...] Default entry of profiles.ini."""
+    ini = configparser.ConfigParser(interpolation=None)
+    ini.read(ZEN_DIR / "profiles.ini")
+    for section in ini.sections():
+        if section.startswith("Install") and "Default" in ini[section]:
+            return ZEN_DIR / ini[section]["Default"]
+    return None
+
+
 def describe(name: str) -> str:
     """A hint for telling profiles apart, since most are named like 'Default (release)'."""
     path = profile_path(name)
@@ -60,6 +71,10 @@ def describe(name: str) -> str:
 
 def resolve(name: str) -> Path:
     """The profile's folder. Only the dedicated profile is created when missing, so a typo can't make one."""
+    if name == ZEN_DEFAULT:
+        if path := install_default_path():
+            return path
+        raise ZenError("Zen has no default profile in profiles.ini. Run `zenpilot setup` and pick one.")
     if path := profile_path(name):
         return path
     if name != DEFAULT_PROFILE:
@@ -128,8 +143,17 @@ def quit_zen(pid: int, profile: Path, timeout: float = 30) -> None:
         time.sleep(0.25)
 
 
+def launch_command(name: str, port: int) -> list[str]:
+    """`open` argv that starts Zen in the already-running app's way: no -n (no second instance), no private flags.
+
+    ZEN_DEFAULT starts Zen's own default profile (no -P); any other name selects that profile.
+    """
+    profile = [] if name == ZEN_DEFAULT else ["-P", name]
+    return ["open", "-a", str(ZEN_APP), "--args", *profile, "--remote-debugging-port", str(port)]
+
+
 def launch(name: str, port: int, confirm_relaunch: Callable[[str], bool] | None = None, timeout: float = 20) -> bool:
-    """Start Zen on profile `name` with remote debugging.
+    """Start Zen on profile `name` (ZEN_DEFAULT: the user's default) with remote debugging.
 
     If the profile is already open without it, Zen is quit and reopened when
     confirm_relaunch(question) agrees. Returns False if something already listens on the port.
@@ -137,7 +161,10 @@ def launch(name: str, port: int, confirm_relaunch: Callable[[str], bool] | None 
     if port_open(port):
         return False
     path = resolve(name)
-    ensure_prefs(path, [SAFE_PREF])  # before Zen reads user.js, or remote debugging weakens the profile
+    if name != ZEN_DEFAULT:
+        # Before Zen reads user.js, or remote debugging weakens a dedicated profile. The everyday profile is
+        # never written to: its user.js is the user's own.
+        ensure_prefs(path, [SAFE_PREF])
     if pid := holder(path):
         question = (
             f"Zen is open on profile \u201c{name}\u201d without remote debugging, so Claude can't use it. "
@@ -151,9 +178,7 @@ def launch(name: str, port: int, confirm_relaunch: Callable[[str], bool] | None 
         quit_zen(pid, path)
     if not ZEN_APP.exists():
         raise ZenError(f"Zen isn't installed at {ZEN_APP}.")
-    subprocess.run(
-        ["open", "-na", str(ZEN_APP), "--args", "-P", name, "--remote-debugging-port", str(port)], check=True
-    )
+    subprocess.run(launch_command(name, port), check=True)
     deadline = time.monotonic() + timeout
     while not port_open(port):
         if time.monotonic() > deadline:

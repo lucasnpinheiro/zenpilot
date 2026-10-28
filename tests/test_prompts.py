@@ -1,5 +1,7 @@
 """The dialogs zenpilot shows: site access and the first-run profile choice (dialogs faked)."""
 
+from dataclasses import replace
+
 import pytest
 
 from zenpilot import server
@@ -55,15 +57,10 @@ def test_declined_sites_are_not_asked_again(env, answer):
     assert len(asked) == 1
 
 
-def test_choose_profile(monkeypatch):
-    monkeypatch.setattr(server, "profile_names", lambda: ["Default (release)", "zenpilot"])
-    monkeypatch.setattr(server, "describe", lambda name: "open now")
-    shown = []
-    monkeypatch.setattr(server.dialogs, "choose", lambda msg, items: shown.extend(items) or items[0])
-    assert server._choose_profile() == "zenpilot"
-    assert shown[1:] == ["Default (release) (open now)"]
-    monkeypatch.setattr(server.dialogs, "choose", lambda msg, items: "Default (release) (open now)")
-    assert server._choose_profile() == "Default (release)"
-    monkeypatch.setattr(server.dialogs, "choose", lambda msg, items: None)
-    with pytest.raises(server.ZenError, match="No Zen profile was chosen"):
-        server._choose_profile()
+def test_start_zen_uses_the_default_profile_without_asking(monkeypatch):
+    monkeypatch.setattr(server, "port_open", lambda port: False)
+    monkeypatch.setattr(server.dialogs, "choose", lambda *a: pytest.fail("asked which profile"))
+    launched = []
+    monkeypatch.setattr(server, "launch", lambda name, port, confirm: launched.append((name, port)) or True)
+    server._start_zen(replace(cfg(), profile=None))
+    assert launched == [(server.ZEN_DEFAULT, 9222)]

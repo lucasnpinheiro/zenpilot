@@ -36,7 +36,7 @@ from .safety import (
     set_config_value,
     untrusted,
 )
-from .zen import DEFAULT_PROFILE, ZenError, describe, launch, port_open, profile_names
+from .zen import ZEN_DEFAULT, ZenError, launch, port_open
 from .zen import version as zen_version
 
 INSTRUCTIONS = """\
@@ -229,28 +229,12 @@ def _save_report(cfg: Config) -> Path | None:
 
 
 def _start_zen(cfg: Config) -> None:
-    """Start Zen if nothing listens, picking a profile on first use. Runs in a thread."""
+    """Start Zen on the configured profile (default: the user's own) if nothing listens. Runs in a thread."""
     if port_open(cfg.port):
         return
-    if cfg.profile is None:
-        cfg.profile = _choose_profile() if cfg.prompts else DEFAULT_PROFILE
-        set_config_value("profile", cfg.profile)
     reopen = "Reopen Zen"
     confirm = (lambda q: dialogs.ask(q, ["Not Now", reopen], "Not Now") == reopen) if cfg.prompts else None
-    launch(cfg.profile, cfg.port, confirm)
-
-
-def _choose_profile() -> str:
-    labels = {f"{DEFAULT_PROFILE} (separate and logged out of everything; recommended)": DEFAULT_PROFILE}
-    labels |= {f"{n} ({describe(n)})": n for n in profile_names() if n != DEFAULT_PROFILE}
-    picked = dialogs.choose(
-        "Which Zen profile should Claude use? Your everyday one is usually the one open now. "
-        "With it, Claude can use sites you're logged into, after you allow each one.",
-        list(labels),
-    )
-    if picked is None:
-        raise ZenError("No Zen profile was chosen. Ask the user to try again, or to run `zenpilot setup`.")
-    return labels[picked]
+    launch(cfg.profile or ZEN_DEFAULT, cfg.port, confirm)
 
 
 def _grant(domain: str, cfg: Config) -> bool:
@@ -259,7 +243,7 @@ def _grant(domain: str, cfg: Config) -> bool:
         return False
     always, session = "Always Allow", "Allow This Session"
     answer = dialogs.ask(
-        f"Claude wants to read and act on {domain} in Zen (profile \u201c{cfg.profile or DEFAULT_PROFILE}\u201d).\n\n"
+        f"Claude wants to read and act on {domain} in Zen (profile \u201c{cfg.profile or ZEN_DEFAULT}\u201d).\n\n"
         "Pages can contain text that tries to steer Claude. Only allow sites you trust.",
         ["Don't Allow", session, always],
         "Don't Allow",

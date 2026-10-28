@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .zen import ZEN_DEFAULT
+
 CONFIG_PATH = Path(os.environ.get("ZENPILOT_CONFIG", "~/.config/zenpilot/config.toml")).expanduser()
 
 DEFAULT_CONFIG = """\
@@ -35,9 +37,10 @@ capture_actions = false
 # site, including ones you're logged into. Pages can contain prompt injection.
 dangerously_allow_all_sites = false
 
-# Zen profile zenpilot drives. Until it's set, you're asked on first use (or by
-# `zenpilot setup`); "zenpilot" is a dedicated, logged-out profile.
-# profile = "zenpilot"
+# Zen profile zenpilot drives. "default" is Zen's own default profile, your everyday one with
+# your logins. A name (see `zenpilot setup`) picks another profile; "zenpilot" is a dedicated,
+# logged-out one.
+profile = "default"
 
 # Port Zen listens on (--remote-debugging-port).
 port = 9222
@@ -76,7 +79,7 @@ class Config:
     allow_all_sites: bool
     port: int
     audit_log: Path
-    profile: str | None = None  # None: not chosen yet
+    profile: str = ZEN_DEFAULT  # Zen's own default profile
     auto_launch: bool = True
     prompts: bool = True
     allow_scripts: bool = False
@@ -104,7 +107,7 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         allow_all_sites=raw.get("dangerously_allow_all_sites", False) is True,
         port=int(raw.get("port", defaults["port"])),
         audit_log=Path(raw.get("audit_log", defaults["audit_log"])).expanduser(),
-        profile=str(raw["profile"]) if "profile" in raw else None,
+        profile=str(raw.get("profile", ZEN_DEFAULT)),
         auto_launch=raw.get("auto_launch", defaults["auto_launch"]) is True,
         prompts=raw.get("prompts", defaults["prompts"]) is True,
         allow_scripts=raw.get("allow_scripts", defaults["allow_scripts"]) is True,

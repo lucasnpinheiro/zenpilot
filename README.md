@@ -44,8 +44,9 @@ Just ask Claude: *"order a large pizza with bacon on httpbin.org/forms/post for 
 
 The first time, a few popups may show up. Only you see them, not Claude:
 
-- **Which profile?** `zenpilot` is a fresh profile that isn't logged in to anything. Pick
-  your own profile if you want Claude to use sites you're logged into.
+- **Which profile?** `default` is Zen's own default profile, the one you use every day, so
+  Claude can use the sites you're logged into. Pick a dedicated profile in `zenpilot setup`
+  if you want Claude logged out of everything.
 - **Reopen Zen?** If Zen is already open without remote control, zenpilot offers to restart
   it. Your tabs come back.
 - **Allow this site?** Claude only works on sites you allow. Choose *Don't Allow*, *Allow
@@ -81,9 +82,8 @@ and URLs lose their `?query` part. Still, read it before you submit.
 
 - **Allowlist.** Claude only works on sites you've allowed. Add one with
   `zenpilot allow github.com`.
-- **Stick to the `zenpilot` profile if you can.** It's logged out of everything. On your main
-  profile, a shady page could try to trick Claude into doing stuff in your accounts, so only
-  allow sites you trust.
+- **Your logins are in reach.** Claude uses your default profile, so a shady page could try to
+  trick it into doing things in your accounts. Allow only sites you trust.
 - **Read-only mode.** Set `read_only = true` and Claude can look but not click or type.
 - **Log.** Everything Claude does is written to `~/.local/state/zenpilot/audit.jsonl`.
 - **Remote control is open while Zen runs this way.** Other apps on your Mac could connect
@@ -110,7 +110,7 @@ They live in `~/.config/zenpilot/config.toml`, and changes apply right away.
 ```toml
 allowlist = ["localhost", "127.0.0.1"]   # "example.com" covers its subdomains too
 read_only = false                        # true: Claude can look but not click or type
-profile = "zenpilot"                     # which Zen profile Claude uses
+profile = "default"                     # Zen's default profile, or a name from `zenpilot setup`
 auto_launch = true                       # open Zen when Claude needs it
 prompts = true                           # show the popups above
 port = 9222
