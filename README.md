@@ -44,8 +44,9 @@ Just ask Claude: *"order a large pizza with bacon on httpbin.org/forms/post for 
 
 The first time, a few popups may show up. Only you see them, not Claude:
 
-- **Which profile?** `zenpilot` is a fresh profile that isn't logged in to anything. Pick
-  your own profile if you want Claude to use sites you're logged into.
+- **Which profile?** `default` is Zen's own default profile, the one you use every day, so
+  Claude can use the sites you're logged into. Pick a dedicated profile in `zenpilot setup`
+  if you want Claude logged out of everything.
 - **Reopen Zen?** If Zen is already open without remote control, zenpilot offers to restart
   it. Your tabs come back.
 - **Allow this site?** Claude only works on sites you allow. Choose *Don't Allow*, *Allow
@@ -62,13 +63,27 @@ More tools (devtools and claude-in-chrome parity): `read_console_messages`,
 `resize_window`, `handle_dialog`, `file_upload`, `find`, `form_input`, `hover`, `wait_for`,
 `network_route`, `network_unroute`, `browser_batch`, `action_history` and `run_report`.
 
+## When it gets stuck
+
+zenpilot is far from perfect, and every site is different. When Claude can't do something
+(say, upload a file), it notes what it tried. zenpilot also notes tool calls that failed or
+took over 5 seconds. If anything went wrong, a notification at the end of the session points
+you to a report in `~/.local/state/zenpilot/reports/`.
+
+```sh
+zenpilot report           # show the latest report
+zenpilot report --issue   # open a GitHub issue with it filled in
+```
+
+What you typed and the pages' text stay out of it, Claude is asked to leave out personal data,
+and URLs lose their `?query` part. Still, read it before you submit.
+
 ## Staying safe
 
 - **Allowlist.** Claude only works on sites you've allowed. Add one with
   `zenpilot allow github.com`.
-- **Stick to the `zenpilot` profile if you can.** It's logged out of everything. On your main
-  profile, a shady page could try to trick Claude into doing stuff in your accounts, so only
-  allow sites you trust.
+- **Your logins are in reach.** Claude uses your default profile, so a shady page could try to
+  trick it into doing things in your accounts. Allow only sites you trust.
 - **Read-only mode.** Set `read_only = true` and Claude can look but not click or type.
 - **Log.** Everything Claude does is written to `~/.local/state/zenpilot/audit.jsonl`.
 - **Remote control is open while Zen runs this way.** Other apps on your Mac could connect
@@ -86,6 +101,7 @@ blocker and so on), which would otherwise happen when remote control is on.
 | `zenpilot allow [site...]` | Allow sites. `--remove` takes them off. No sites lists them. |
 | `zenpilot launch` | Open Zen with remote control on |
 | `zenpilot doctor` | Check your setup and say how to fix anything that's broken |
+| `zenpilot report` | Show the latest session report. `--issue` files it on GitHub, `--list` lists them all. |
 
 ## Settings
 
@@ -94,11 +110,12 @@ They live in `~/.config/zenpilot/config.toml`, and changes apply right away.
 ```toml
 allowlist = ["localhost", "127.0.0.1"]   # "example.com" covers its subdomains too
 read_only = false                        # true: Claude can look but not click or type
-profile = "zenpilot"                     # which Zen profile Claude uses
+profile = "default"                     # Zen's default profile, or a name from `zenpilot setup`
 auto_launch = true                       # open Zen when Claude needs it
 prompts = true                           # show the popups above
 port = 9222
 audit_log = "~/.local/state/zenpilot/audit.jsonl"
+report_dir = "~/.local/state/zenpilot/reports"
 dangerously_allow_all_sites = false      # skips the allowlist. Please don't.
 allow_scripts = false                    # true: enables the javascript_tool tool
 show_actions = true                      # false: no cursor/click overlay before actions

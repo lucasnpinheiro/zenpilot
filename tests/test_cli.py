@@ -133,3 +133,60 @@ def test_register_desktop_keeps_other_settings(tmp_path):
     assert data["preferences"] == {"a": 1} and data["mcpServers"]["other"] == {"command": "x"}
     assert data["mcpServers"]["zenpilot"] == {"command": "/opt/bin/uvx", "args": ["zenpilot"]}
     assert "not installed" in cli.register_desktop(["x"], tmp_path / "missing/config.json")
+
+
+def test_launch_command_uses_zens_default_profile_without_p():
+    assert zen.launch_command(zen.ZEN_DEFAULT, 9223) == [
+        "open",
+        "-a",
+        str(zen.ZEN_APP),
+        "--args",
+        "--remote-debugging-port",
+        "9223",
+    ]
+
+
+def test_launch_command_names_a_profile_only_when_asked():
+    assert zen.launch_command("Default (release)", 9223) == [
+        "open",
+        "-a",
+        str(zen.ZEN_APP),
+        "--args",
+        "-P",
+        "Default (release)",
+        "--remote-debugging-port",
+        "9223",
+    ]
+
+
+def test_launch_command_is_never_a_new_or_private_instance():
+    for name in (zen.ZEN_DEFAULT, "Default (release)", "zenpilot"):
+        cmd = zen.launch_command(name, 9223)
+        assert "-n" not in cmd and "-na" not in cmd
+        assert not any("private" in arg.lower() for arg in cmd)
+
+
+def test_default_profile_is_the_install_default_in_profiles_ini(tmp_path, monkeypatch):
+    monkeypatch.setattr(zen, "ZEN_DIR", tmp_path)
+    (tmp_path / "profiles.ini").write_text(
+        "[Profile0]\nName=Default (release)\nIsRelative=1\nPath=Profiles/x.Default (release)\n\n"
+        "[Profile2]\nName=zenpilot\nIsRelative=1\nPath=Profiles/5a.zenpilot\n\n"
+        "[Install6ED]\nDefault=Profiles/x.Default (release)\nLocked=1\n"
+    )
+    (tmp_path / "Profiles/x.Default (release)").mkdir(parents=True)
+    assert zen.resolve(zen.ZEN_DEFAULT) == tmp_path / "Profiles/x.Default (release)"
+
+
+def test_default_profile_prefs_are_not_written(tmp_path, monkeypatch):
+    monkeypatch.setattr(zen, "ZEN_DIR", tmp_path)
+    monkeypatch.setattr(zen, "ZEN_APP", tmp_path)
+    (tmp_path / "profiles.ini").write_text("[Install1]\nDefault=Profiles/x.Default\n")
+    profile = tmp_path / "Profiles/x.Default"
+    profile.mkdir(parents=True)
+    calls = []
+    monkeypatch.setattr(zen, "holder", lambda path: None)
+    monkeypatch.setattr(zen, "port_open", lambda port: bool(calls))
+    monkeypatch.setattr(zen.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    assert zen.launch(zen.ZEN_DEFAULT, 9223) is True
+    assert not (profile / "user.js").exists()  # the everyday profile is left as the user set it
+    assert "-P" not in calls[0] and "-n" not in calls[0]

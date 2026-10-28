@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import report as reports
 from . import zen
 from .safety import CONFIG_PATH, load_config, normalize_domain, set_config_value
 
@@ -89,13 +90,12 @@ def _yes(question: str) -> bool:
 
 
 def _pick_profile(current: str | None) -> str:
-    names = [zen.DEFAULT_PROFILE, *(n for n in zen.profile_names() if n != zen.DEFAULT_PROFILE)]
+    names = [zen.ZEN_DEFAULT, *(n for n in zen.profile_names() if n != zen.ZEN_DEFAULT)]
     print("Which Zen profile should Claude use?")
     for i, n in enumerate(names, 1):
-        note = "separate and logged out of everything; recommended" if n == zen.DEFAULT_PROFILE else zen.describe(n)
+        note = "Zen's default profile, with your logins; recommended" if n == zen.ZEN_DEFAULT else zen.describe(n)
         print(f"  {i}) {n} ({note})")
-    print("Your everyday profile is usually the one open now. With it, Claude can use sites")
-    print("you're logged into, after you allow each one.")
+    print("Claude can use sites you're logged into, after you allow each one.")
     default = names.index(current) + 1 if current in names else 1
     while True:
         answer = input(f"Choose [{default}]: ").strip() or str(default)
@@ -108,12 +108,15 @@ def setup(args) -> int:
     if not zen.ZEN_BIN.exists():
         raise zen.ZenError(f"Zen isn't installed at {zen.ZEN_APP}. Get it from https://zen-browser.app")
     interactive = _interactive() and not args.profile
-    name = args.profile or (_pick_profile(cfg.profile) if interactive else cfg.profile or zen.DEFAULT_PROFILE)
+    name = args.profile or (_pick_profile(cfg.profile) if interactive else cfg.profile)
     existed = zen.profile_path(name) is not None
     path = zen.resolve(name)  # creates only the dedicated profile, so a typo can't make a new one
-    print(f"✓ Zen profile '{name}'" + ("" if existed else " created"))
-    added = zen.ensure_prefs(path, [zen.SAFE_PREF, zen.WELCOME_PREF])
-    print(f"✓ Set {', '.join(added)} in its user.js" if added else "✓ Its user.js already has zenpilot's prefs")
+    if name == zen.ZEN_DEFAULT:
+        print(f"✓ Zen's default profile ({path.name}); zenpilot leaves its user.js as it is")
+    else:
+        print(f"✓ Zen profile '{name}'" + ("" if existed else " created"))
+        added = zen.ensure_prefs(path, [zen.SAFE_PREF, zen.WELCOME_PREF])
+        print(f"✓ Set {', '.join(added)} in its user.js" if added else "✓ Its user.js already has zenpilot's prefs")
     if name != cfg.profile:
         set_config_value("profile", name)
         print(f'✓ Set profile = "{name}" in {CONFIG_PATH}')
@@ -136,7 +139,7 @@ def setup(args) -> int:
 
 def launch(args) -> int:
     cfg = load_config()
-    name = args.profile or cfg.profile or zen.DEFAULT_PROFILE
+    name = args.profile or cfg.profile
     if zen.launch(name, cfg.port, _yes if _interactive() else None):
         print(f"Started Zen on profile '{name}' with remote debugging on port {cfg.port}.")
     else:
@@ -162,10 +165,18 @@ def doctor(args) -> int:
     print(f"✓ Config {CONFIG_PATH}" + (f" ({', '.join(modes)})" if modes else ""))
     print(f"  allowlist: {', '.join(cfg.allowlist) or '(empty)'}")
     report(zen.ZEN_BIN.exists(), f"Zen installed at {zen.ZEN_APP}", f"Zen isn't installed at {zen.ZEN_APP}")
-    path = zen.profile_path(cfg.profile) if cfg.profile else None
-    if cfg.profile is None:
-        print("· No Zen profile chosen yet; you'll be asked on first use, or run `zenpilot setup`")
-    elif report(bool(path), f"Zen profile '{cfg.profile}'", f"No Zen profile '{cfg.profile}'. Run `zenpilot setup`."):
+    if cfg.profile == zen.ZEN_DEFAULT:
+        path = zen.install_default_path()
+        report(
+            bool(path),
+            f"Zen's default profile ({path.name if path else ''})",
+            "Zen has no default profile in profiles.ini. Run `zenpilot setup`.",
+        )
+    elif report(
+        bool(path := zen.profile_path(cfg.profile)),
+        f"Zen profile '{cfg.profile}'",
+        f"No Zen profile '{cfg.profile}'. Run `zenpilot setup`.",
+    ):
         report(
             zen.is_safe(path),
             f"{zen.SAFE_PREF[0]} is off in its user.js",
@@ -200,12 +211,35 @@ def allow(args) -> int:
     return 0
 
 
+def report(args) -> int:
+    saved = reports.reports(load_config().report_dir)
+    if args.list:
+        for path in saved:
+            print(path)
+        return 0
+    path = Path(args.file).expanduser() if args.file else next(iter(saved), None)
+    if path is None:
+        print("No session reports yet. zenpilot writes one when Claude runs into trouble.")
+        return 0
+    text = path.read_text()
+    if not args.issue:
+        print(f"{path}\n\n{text}", end="")
+        return 0
+    url, fits = reports.issue_url(text)
+    if not fits:
+        subprocess.run(["pbcopy"], input=text, text=True, check=True)
+        print("The report is too long for a link, so it's on your clipboard: paste it into the issue.")
+    print(f"Opening a new GitHub issue for {path}. Check it for anything private before you submit.")
+    subprocess.run(["open", url], check=True)
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog=NAME, description="With no command, runs the MCP server that Claude starts.")
     parser.add_argument("--check", action="store_true", help=argparse.SUPPRESS)  # old name for doctor
     sub = parser.add_subparsers(dest="command", metavar="command")
     p = sub.add_parser("setup", help="create the Zen profile, register with Claude, start Zen")
-    p.add_argument("--profile", help="Zen profile to set up (default: the config's, 'zenpilot')")
+    p.add_argument("--profile", help="Zen profile to set up (default: the config's, 'default')")
     p.add_argument("--no-register", action="store_true", help="don't register with Claude Code or Claude Desktop")
     p.add_argument("--no-launch", action="store_true", help="don't start Zen at the end")
     p = sub.add_parser("launch", help="start Zen with remote debugging")
@@ -214,6 +248,10 @@ def main() -> None:
     p = sub.add_parser("allow", help="add sites to the allowlist; with no sites, show it")
     p.add_argument("domains", nargs="*", metavar="domain")
     p.add_argument("--remove", action="store_true", help="remove the sites instead")
+    p = sub.add_parser("report", help="show the latest session report of what Claude couldn't do")
+    p.add_argument("file", nargs="?", help="a report to use instead of the latest")
+    p.add_argument("--issue", action="store_true", help="open a GitHub issue prefilled with it")
+    p.add_argument("--list", action="store_true", help="list all reports, newest first")
     args = parser.parse_args()
 
     command = "doctor" if args.check else args.command
@@ -225,7 +263,8 @@ def main() -> None:
         anyio.run(serve)
         return
     try:
-        sys.exit({"setup": setup, "launch": launch, "doctor": doctor, "allow": allow}[command](args))
+        commands = {"setup": setup, "launch": launch, "doctor": doctor, "allow": allow, "report": report}
+        sys.exit(commands[command](args))
     except (zen.ZenError, ValueError, OSError, subprocess.SubprocessError) as e:
         sys.exit(f"zenpilot: {e}")
     except (EOFError, KeyboardInterrupt):
