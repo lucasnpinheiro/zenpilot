@@ -1,6 +1,6 @@
 ---
-status: DONE
-progress: 3/3
+status: IN_PROGRESS
+progress: 3/4
 updated: 2026-10-29
 ---
 # Spec — zenpilot (fork): `allow --json`, gravação da sessão e posse de abas
@@ -30,7 +30,8 @@ sessão viva. Hoje duas sessões Claude podem clicar na mesma aba sem saber uma 
 | --- | --- |
 | [spec/01-criteria.md](spec/01-criteria.md) | Criteria · States · Out of scope · Observable · Swept |
 | [spec/02-technical.md](spec/02-technical.md) | Impact · Decided · Surface · contratos · RCG · Sources · gap · BDD flow |
-| [spec/03-captura.md](spec/03-captura.md) | `capture_page` (23-27) |
+| [spec/03-captura.md](spec/03-captura.md) | `capture_page` (23-28) |
+| [spec/04-mouse.md](spec/04-mouse.md) | Ações de mouse: cursor, botões, drag, coordenadas (29-35) |
 | [tasks/README.md](tasks/README.md) · [tests.md](tests.md) · [acceptance/](acceptance/) | DAG · test design · Gherkin |
 
 ## Unresolved

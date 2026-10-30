@@ -5,7 +5,7 @@ updated: 2026-10-29
 ---
 # Tests — design (zenpilot)
 
-Runner: `uv run pytest -q` (um exit code). Coverage plan: 24/24 critérios ativos com teste (100%); `recording.py` com teste direto em todas as funções; meta ≥93% de linha via `pytest --cov=zenpilot.recording` (pytest-cov já usado? não verificado → instalar só no dev se faltar).
+Runner: `uv run pytest -q` (um exit code). Coverage plan: 31/31 critérios ativos com teste (100%); `recording.py` com teste direto em todas as funções; meta ≥93% de linha via `pytest --cov=zenpilot.recording` (pytest-cov já usado? não verificado → instalar só no dev se faltar).
 
 | Tipo | Arquivo | Critérios |
 | --- | --- | --- |
