@@ -428,12 +428,16 @@ async def list_tabs() -> str:
     cfg, lines = _cfg.get(), []
     for t in await browser.tabs():
         mark = "*" if t["active"] else " "
+        tag = ""
+        if cfg.tab_ownership != "off":
+            owner = owner_of(cfg.port, t["id"])
+            tag = " [yours]" if owner == os.getpid() else " [other session]" if owner is not None else " [not attached]"
         try:
             check_url(t["url"], cfg)
-            lines.append(f"{mark}{t['id']} {t['url']} | {t['title']}")
+            lines.append(f"{mark}{t['id']}{tag} {t['url']} | {t['title']}")
         except Blocked as e:
             hint = "using it asks the user to allow it" if e.domain and cfg.prompts else "ask the user"
-            lines.append(f"{mark}{t['id']} [not allowlisted: {domain_of(t['url'])}; {hint}]")
+            lines.append(f"{mark}{t['id']}{tag} [not allowlisted: {domain_of(t['url'])}; {hint}]")
     return untrusted("\n".join(lines) or "[no tabs: Zen has no open window]", "tab titles")
 
 
