@@ -1,6 +1,6 @@
 ---
-status: TODO
-progress: 0/4
+status: DONE
+progress: 4/4
 updated: 2026-10-29
 ---
 # 02 — Technical (zenpilot fork `main`; âncoras por nome de função — as linhas mudam)

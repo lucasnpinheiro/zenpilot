@@ -1,6 +1,6 @@
 ---
-status: TODO
-progress: 0/3
+status: DONE
+progress: 3/3
 updated: 2026-10-29
 ---
 # Spec — zenpilot (fork): `allow --json`, gravação da sessão e posse de abas

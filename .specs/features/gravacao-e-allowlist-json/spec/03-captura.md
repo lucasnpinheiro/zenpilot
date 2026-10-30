@@ -1,6 +1,6 @@
 ---
-status: TODO
-progress: 0/5
+status: DONE
+progress: 5/5
 updated: 2026-10-29
 ---
 # 03 — `capture_page`: console, requests + responses, DOM, storage e cookies
