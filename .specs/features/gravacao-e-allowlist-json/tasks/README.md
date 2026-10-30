@@ -1,6 +1,6 @@
 ---
 status: TODO
-progress: 0/8
+progress: 0/9
 updated: 2026-10-29
 ---
 # Tasks — zenpilot (DAG)
@@ -17,3 +17,4 @@ TDD com `uv run pytest -q` (baseline = suíte verde depois do PR `fix/merge-4234
 | [T-006](T-006-checagem-em-tab.md) | checagem de posse em `_tab()` | T-005 | sim (**breaking**: default strict) | 16, 17 |
 | [T-007](T-007-attach-tab.md) | tool `attach_tab` + diálogo | T-005 | sim | 19, 20 |
 | [T-008](T-008-list-tabs-dono.md) | `list_tabs` com o dono | T-005 | não | 21 |
+| [T-009](T-009-capture-page.md) | tool `capture_page` | T-006 | sim (cookies) | 23-27 |

@@ -1,6 +1,6 @@
 ---
 status: TODO
-progress: 0/2
+progress: 0/3
 updated: 2026-10-29
 ---
 # Spec — zenpilot (fork): `allow --json`, gravação da sessão e posse de abas
@@ -24,12 +24,13 @@ base não mudam. Posse de abas (claudezilla, claude-code-bridge): por padrão (`
 o Claude só age nas abas que abriu ou que o usuário entregou via `attach_tab`, e nunca nas de outra
 sessão viva. Hoje duas sessões Claude podem clicar na mesma aba sem saber uma da outra.
 
-**19 criteria in 3 slices (3 removidos) · 5 one-way doors · 0 open**
+**24 criteria in 4 slices (3 removidos) · 7 one-way doors · 0 open**
 
 | File | Content |
 | --- | --- |
 | [spec/01-criteria.md](spec/01-criteria.md) | Criteria · States · Out of scope · Observable · Swept |
 | [spec/02-technical.md](spec/02-technical.md) | Impact · Decided · Surface · contratos · RCG · Sources · gap · BDD flow |
+| [spec/03-captura.md](spec/03-captura.md) | `capture_page` (23-27) |
 | [tasks/README.md](tasks/README.md) · [tests.md](tests.md) · [acceptance/](acceptance/) | DAG · test design · Gherkin |
 
 ## Unresolved
