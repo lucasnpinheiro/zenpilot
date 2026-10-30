@@ -71,7 +71,7 @@ More tools (devtools and claude-in-chrome parity): `read_console_messages`,
 `resize_window`, `handle_dialog`, `file_upload`, `find`, `form_input`, `hover`, `wait_for`,
 `network_route`, `network_unroute`, `browser_batch`, `action_history` and `run_report`.
 `capture_page` saves a tab's HAR with bodies, console, DOM text, storage and cookies (httpOnly
-included, kept whole) to the run folder, and hands back only a summary.
+included; `capture_cookies` in config: `redact_httponly` (default) masks httpOnly values, `page` keeps only cookies the page reads, `all` keeps every value) to the run folder, and hands back only a summary.
 
 ## When it gets stuck
 
@@ -143,6 +143,7 @@ dangerously_allow_all_sites = false      # skips the allowlist. Please don't.
 allow_scripts = false                    # true: enables the javascript_tool tool
 show_actions = true                      # false: no cursor/click overlay before actions
 capture_actions = false                  # true: save a screenshot per mutating action for run_report
+capture_cookies = "redact_httponly"      # what capture_page writes for cookies: redact_httponly | page | all
 ```
 
 Uploads need one Firefox setting (`dom.file.createInChild`) in the profile. zenpilot adds it
