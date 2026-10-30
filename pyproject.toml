@@ -23,6 +23,9 @@ dependencies = [
     "websockets>=15,<18",
 ]
 
+[project.optional-dependencies]
+gif = ["Pillow>=10"]
+
 [project.urls]
 Homepage = "https://github.com/beSaif/zenpilot"
 Issues = "https://github.com/beSaif/zenpilot/issues"
@@ -36,6 +39,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "pillow>=13.0.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "ruff>=0.14",

@@ -112,7 +112,15 @@ blocker and so on), which would otherwise happen when remote control is on.
 | `zenpilot launch` | Open Zen with remote control on |
 | `zenpilot doctor` | Check your setup and say how to fix anything that's broken |
 | `zenpilot report` | Show the latest session report. `--issue` files it on GitHub, `--list` lists them all. |
+| `zenpilot gif [run]` | Make `recording.gif` from a run's step screenshots (needs `pip install 'zenpilot[gif]'`) |
 | `zenpilot log` | Show what Claude did lately. `-n 200` for more, `--errors` for failures only |
+
+## GIF
+
+With `capture_actions` on, zenpilot saves a screenshot after every action. `zenpilot gif` turns the
+latest run's screenshots into `recording.gif` in the run's folder (`zenpilot gif <folder>` for another
+run), one frame per step. `run_report` writes it too. It needs Pillow: `pip install 'zenpilot[gif]'`.
+The frames are the screenshots as they were, with no captions, so what you typed shows only if the page shows it.
 
 ## Settings
 

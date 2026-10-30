@@ -1,5 +1,6 @@
 """Action capture: capture_actions config, step screenshots, screenshot saving, run_report and the HAR it writes."""
 
+import builtins
 import contextlib
 import json
 import sys
@@ -315,3 +316,43 @@ async def test_ref_tool_records_url_and_shoots_the_refs_tab(run):
     assert server.HISTORY.last().url == "http://localhost/ref-page"
     assert url_contexts == ["c-other"]
     assert shot_contexts == ["c-other"]
+
+
+# -- run_report GIF -------------------------------------------------------------
+
+
+@pytest.fixture
+def no_pillow(monkeypatch):
+    real = builtins.__import__
+
+    def fake(name, *a, **k):
+        if name == "PIL" or name.startswith("PIL."):
+            raise ImportError("no PIL")
+        return real(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", fake)
+
+
+async def test_run_report_appends_gif_with_steps(run, report_module):
+    Image = pytest.importorskip("PIL.Image")
+    Image.new("RGB", (8, 8), "red").save(run.run_dir / "step-0001.jpg", "JPEG")
+    text = await server.run_report()
+    assert text.endswith(f" GIF: {run.run_dir / 'recording.gif'}.")
+    assert (run.run_dir / "recording.gif").exists()
+
+
+async def test_run_report_unchanged_without_steps(run, report_module):
+    text = await server.run_report()
+    assert text == f"Report written: {run.run_dir / 'report.html'} and {run.run_dir / 'report.json'}."
+
+
+async def test_run_report_unchanged_without_pillow(run, report_module, no_pillow):
+    (run.run_dir / "step-0001.jpg").write_bytes(b"x")
+    text = await server.run_report()
+    assert "GIF" not in text
+
+
+async def test_run_report_unchanged_with_unreadable_steps(run, report_module):
+    pytest.importorskip("PIL")
+    (run.run_dir / "step-0001.jpg").write_bytes(b"not a jpeg")
+    assert "GIF" not in await server.run_report()
