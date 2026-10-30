@@ -49,4 +49,7 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-markers = ["integration: needs a live Zen on 127.0.0.1:9222"]
+markers = [
+    "integration: needs a live Zen on 127.0.0.1:9222",
+    "ownership: runs with the real tab_ownership config (conftest turns it off otherwise)",
+]

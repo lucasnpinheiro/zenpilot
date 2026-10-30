@@ -34,10 +34,13 @@ from .safety import (
     audit,
     check_upload,
     check_url,
+    claim,
     domain_of,
     grant,
     grants,
     load_config,
+    owner_of,
+    release,
     set_config_value,
     untrusted,
 )
@@ -388,8 +391,27 @@ async def _tab(tab_id: str | None) -> dict:
     _domain.set(domain_of(tab["url"]))
     _resolved_context.set(tab["context"])
     check_url(tab["url"], _cfg.get())
+    _check_owner(tab["id"], _cfg.get())
     await _mark(tab["context"])
     return tab
+
+
+def _check_owner(tab_id: str, cfg: Config) -> None:
+    """strict: only this session's tabs; sessions: also tabs nobody owns; off: no check."""
+    if cfg.tab_ownership == "off":
+        return
+    owner = owner_of(cfg.port, tab_id)
+    if owner == os.getpid():
+        return
+    if owner is not None:
+        raise Blocked(
+            f"Tab {tab_id} belongs to another Claude session (zenpilot pid {owner}). Use your own tabs (new_tab)."
+        )
+    if cfg.tab_ownership == "strict":
+        raise Blocked(
+            f"Tab {tab_id} isn't Claude's. Call attach_tab('{tab_id}') to ask the user for it, "
+            "or open one with new_tab."
+        )
 
 
 def _frame_reason(url: str) -> str | None:
@@ -422,6 +444,7 @@ async def new_tab(url: str | None = None) -> str:
         _domain.set(domain_of(url))
         check_url(url, _cfg.get())
     tab_id = await browser.new_tab()
+    claim(_cfg.get().port, tab_id)
     tab = await browser.tab(tab_id)
     await _mark(tab["context"])
     arrival = ""
@@ -445,6 +468,7 @@ async def close_tab(tab_id: str) -> str:
     """Close a tab."""
     tab = await _tab(tab_id)
     await browser.close_tab(tab)
+    release(_cfg.get().port, tab["id"])
     _marked.set(None)
     return f"Closed {tab['id']}."
 
