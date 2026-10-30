@@ -56,8 +56,6 @@ prompts = true
 # only its length. `zenpilot log` prints it as a timeline.
 audit_log = "~/.local/state/zenpilot/audit.jsonl"
 
-# file_upload may only send files from ~/.local/state/zenpilot/uploads or from these folders.
-upload_dirs = []
 # A session with failed or slow tool calls, or things Claude couldn't do, leaves a report
 # here. `zenpilot report --issue` turns the latest into a GitHub issue.
 report_dir = "~/.local/state/zenpilot/reports"
@@ -67,7 +65,8 @@ report_dir = "~/.local/state/zenpilot/reports"
 audit_redact_urls = false
 
 # Folders whose files the upload tool may put into a page's file inputs, e.g.
-# ["~/Documents/Applications"]. Subfolders count too. Empty: uploads are off.
+# ["~/Documents/Applications"]. Subfolders count too. file_upload may also send files
+# from ~/.local/state/zenpilot/uploads (always allowed). Empty: uploads are off.
 upload_dirs = []
 """
 
@@ -95,7 +94,6 @@ class Config:
     allow_scripts: bool = False
     show_actions: bool = True
     capture_actions: bool = False
-    upload_dirs: list[str] = field(default_factory=list)  # extra folders file_upload may read from
     report_dir: Path = Path("~/.local/state/zenpilot/reports").expanduser()
     audit_redact_urls: bool = False
     upload_dirs: list[Path] = field(default_factory=list)
@@ -125,7 +123,6 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         allow_scripts=raw.get("allow_scripts", defaults["allow_scripts"]) is True,
         show_actions=raw.get("show_actions", defaults["show_actions"]) is not False,
         capture_actions=raw.get("capture_actions", defaults["capture_actions"]) is True,
-        upload_dirs=[d for d in upload_dirs if d.strip()],
         report_dir=Path(raw.get("report_dir", defaults["report_dir"])).expanduser(),
         audit_redact_urls=raw.get("audit_redact_urls", False) is True,
         upload_dirs=[Path(d).expanduser().resolve() for d in upload_dirs if d.strip()],

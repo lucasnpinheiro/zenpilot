@@ -92,7 +92,7 @@ def test_default_config_documents_show_actions():
 
 async def test_click_draws_overlay_before_the_click(fake_bidi, calls):
     b, bidi = await shown_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     await b.click("r1")
     (call,) = overlay_calls(calls)
     assert call["args"][2:4] == ("click", "click")
@@ -102,7 +102,7 @@ async def test_click_draws_overlay_before_the_click(fake_bidi, calls):
 
 async def test_click_overlay_gets_point_and_rect(fake_bidi, calls):
     b, _ = await shown_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     await b.click("r1")
     x, y, kind, label, rect = overlay_calls(calls)[0]["args"]
     assert (x, y) == (60.0, 40.0)  # center of the RECT reply
@@ -111,7 +111,7 @@ async def test_click_overlay_gets_point_and_rect(fake_bidi, calls):
 
 async def test_type_label_counts_chars_and_never_shows_text(fake_bidi, calls):
     b, _ = await shown_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     await b.type("r1", "hunter2", False)
     (call,) = overlay_calls(calls)
     assert call["args"][2:4] == ("type", "type 7 chars")
@@ -120,21 +120,21 @@ async def test_type_label_counts_chars_and_never_shows_text(fake_bidi, calls):
 
 async def test_hover_draws_hover_overlay(fake_bidi, calls):
     b, _ = await shown_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     await b.hover("r1")
     assert overlay_calls(calls)[0]["args"][2:4] == ("hover", "hover")
 
 
 async def test_form_input_draws_type_overlay(fake_bidi, calls):
     b, _ = await shown_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     await b.form_input("r1", "Brasil")
     assert overlay_calls(calls)[0]["args"][2:4] == ("type", "set value")
 
 
 async def test_file_upload_draws_click_overlay_with_file_count(fake_bidi, calls, tmp_path):
     b, _ = await shown_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     files = [str(tmp_path / "a"), str(tmp_path / "b")]
     await b.file_upload("r1", files)
     assert overlay_calls(calls)[0]["args"][2:4] == ("click", "upload 2 file(s)")
@@ -143,7 +143,7 @@ async def test_file_upload_draws_click_overlay_with_file_count(fake_bidi, calls,
 async def test_show_actions_off_draws_nothing(fake_bidi, calls):
     b, bidi = await shown_browser(fake_bidi)
     b.show_actions = False
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     await b.click("r1")
     assert not overlay_calls(calls)
     assert not [c for c in calls if c["fn"] is browser_mod.RECT_JS]
@@ -152,7 +152,7 @@ async def test_show_actions_off_draws_nothing(fake_bidi, calls):
 
 async def test_overlay_failure_never_fails_the_click(fake_bidi, monkeypatch):
     b, bidi = await shown_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     real_run = Browser.run
 
     async def broken_overlay(self, context, fn, *args, timeout=15):
@@ -171,7 +171,7 @@ async def test_overlay_failure_never_fails_the_click(fake_bidi, monkeypatch):
 
 async def test_overlay_is_short_timeout(fake_bidi, calls):
     b, _ = await shown_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     await b.hover("r1")
     assert overlay_calls(calls)[0]["timeout"] == 2
 
@@ -227,6 +227,14 @@ async def test_read_page_omits_overlay_live():
 
 
 class ProbeBrowser:
+    stopped = False  # the badge's Stop button, read by every tool call
+
+    def ref_key(self, key):
+        return None
+
+    async def mark(self, context, action=None):
+        pass
+
     connected = True
     devtools_error = None
 

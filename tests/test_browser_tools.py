@@ -29,6 +29,14 @@ OUTLINE = "\n".join(
 
 
 class FakeBrowser:
+    stopped = False  # the badge's Stop button, read by every tool call
+
+    def ref_key(self, key):
+        return None
+
+    async def mark(self, context, action=None):
+        pass
+
     connected = True
 
     def __init__(self, cfg):
@@ -308,7 +316,7 @@ class FakeBiDi:
         self.sent.append((method, params))
         if FakeBiDi.fail and (exc := FakeBiDi.fail(method, params)):
             raise exc
-        reply = FakeBiDi.replies.get(method, {})
+        reply = FakeBiDi.replies.get(method, {"contexts": []} if method == "browsingContext.getTree" else {})
         if isinstance(reply, list):
             reply = reply.pop(0)
         return reply
@@ -353,7 +361,7 @@ async def connected(fake_bidi):
 
 async def test_form_input_runs_setter_script(fake_bidi):
     b, bidi = await connected(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     FakeBiDi.replies["script.callFunction"] = [array("ok", "BUTTON", "", ""), array("ok", "Brazil")]
     assert await b.form_input("r1", "br") == "Set r1 to 'Brazil'."
     params = sent(bidi, "script.callFunction")[-1]
@@ -374,7 +382,7 @@ async def test_form_input_runs_setter_script(fake_bidi):
 )
 async def test_form_input_explains_refusals(fake_bidi, status, detail, value, message):
     b, _ = await connected(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     FakeBiDi.replies["script.callFunction"] = [array("ok", "INPUT", "", ""), array(status, detail)]
     with pytest.raises(BrowserError, match=message.replace("(", r"\(").replace("?", r"\?")):
         await b.form_input("r1", value)
@@ -382,7 +390,7 @@ async def test_form_input_explains_refusals(fake_bidi, status, detail, value, me
 
 async def test_hover_moves_pointer_to_element_center(fake_bidi):
     b, bidi = await connected(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     FakeBiDi.replies["script.callFunction"] = array("ok", "BUTTON", "", "")
     assert await b.hover("r1") == "Hovered r1."
     actions = sent(bidi, "input.performActions")[-1]
@@ -431,7 +439,7 @@ async def test_wait_for_ref_needs_visible_element():
         return True
 
     b.run = run
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     assert await b.wait_for({"context": "c1"}, text=None, key="r1", url_contains=None, timeout_ms=300)
     with pytest.raises(BrowserError, match="Unknown ref"):
         await b.wait_for({"context": "c1"}, text=None, key="r9", url_contains=None, timeout_ms=300)
