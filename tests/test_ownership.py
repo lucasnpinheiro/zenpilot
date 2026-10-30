@@ -22,6 +22,15 @@ class OwnBrowser(FakeBrowser):
     async def close_tab(self, tab):
         self.closed = tab["id"]
 
+    def tab_id_of(self, context):
+        return {"c1": "t1", "c2": "t2"}.get(context)
+
+    async def type(self, ref, text, submit):
+        return f"Typed into {ref}."
+
+    async def form_input(self, ref, value):
+        return f"Set {ref}."
+
     async def activate(self, tab):
         pass
 
@@ -123,3 +132,29 @@ async def test_close_tab_releases(strict):
 async def test_list_and_switch_tab_do_not_check(strict):
     assert "t1" in await server.list_tabs()
     assert "Switched to t1." == await server.switch_tab(tab_id="t1")
+
+
+REF_CALLS = [
+    lambda: server.click(ref="r1"),
+    lambda: server.type(ref="r1", text="x"),
+    lambda: server.form_input(ref="r1", value="x"),
+]
+
+
+@pytest.mark.parametrize("call", REF_CALLS)
+async def test_ref_tools_block_an_unowned_tab_in_strict(call, strict):
+    with pytest.raises(server.ToolError, match="Tab t1 isn't Claude's"):
+        await call()
+
+
+@pytest.mark.parametrize("call", REF_CALLS)
+async def test_ref_tools_block_another_sessions_tab(call, strict):
+    set_owner("t1", os.getppid())
+    with pytest.raises(server.ToolError, match="belongs to another Claude session"):
+        await call()
+
+
+@pytest.mark.parametrize("call", REF_CALLS)
+async def test_ref_tools_pass_on_an_own_tab(call, strict):
+    set_owner("t1", os.getpid())
+    assert await call()

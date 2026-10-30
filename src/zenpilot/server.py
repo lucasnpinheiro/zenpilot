@@ -521,10 +521,14 @@ async def read_page(tab_id: str | None = None) -> str:
 
 async def _check_ref(key: str) -> None:
     url = await browser.ref_url(key)
-    _resolved_context.set(browser.top_context(browser.ref(key)))
+    context = browser.top_context(browser.ref(key))
+    _resolved_context.set(context)
     _domain.set(domain_of(url))
-    check_url(url, _cfg.get())
-    await _mark(browser.top_context(browser.ref(key)))
+    cfg = _cfg.get()
+    check_url(url, cfg)
+    if cfg.tab_ownership != "off":
+        _check_owner(browser.tab_id_of(context) or "?", cfg)
+    await _mark(context)
 
 
 @tool(mutates=True)

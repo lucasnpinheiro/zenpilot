@@ -663,6 +663,10 @@ class Browser:
             self._contexts[tab] = context
         return self._tab_ids[context]
 
+    def tab_id_of(self, context: str) -> str | None:
+        """The \"tN\" id of a browsing context, or None when it isn't a known tab."""
+        return self._tab_ids.get(context)
+
     def _adopt(self, contexts: list[dict]) -> None:
         """Give tabs from before a reconnect their old ids: same URL first, then same site, in tab order."""
         orphans, self._orphans = self._orphans, []
