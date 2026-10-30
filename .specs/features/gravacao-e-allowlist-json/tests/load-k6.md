@@ -1,6 +1,6 @@
 ---
-status: TODO
-progress: 0/1
+status: DONE
+progress: 1/1
 updated: 2026-10-29
 ---
 # load-k6

@@ -1,6 +1,6 @@
 ---
-status: IN_PROGRESS
-progress: 9/13
+status: DONE
+progress: 13/13
 updated: 2026-10-29
 ---
 # Tasks — zenpilot (DAG)

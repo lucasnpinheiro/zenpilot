@@ -1,6 +1,6 @@
 ---
-status: TODO
-progress: 0/7
+status: DONE
+progress: 7/7
 updated: 2026-10-29
 ---
 # 04 — Ações de mouse: cursor visível, botões, arrastar, coordenadas

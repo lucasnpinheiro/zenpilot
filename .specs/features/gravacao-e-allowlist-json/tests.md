@@ -1,6 +1,6 @@
 ---
-status: IN_PROGRESS
-progress: 8/9
+status: DONE
+progress: 9/9
 updated: 2026-10-29
 ---
 # Tests — design (zenpilot)
