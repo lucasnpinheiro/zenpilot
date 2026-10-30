@@ -45,6 +45,10 @@
       "description": "Close a tab."
     },
     {
+      "name": "attach_tab",
+      "description": "Ask the user to give Claude a tab it didn't open."
+    },
+    {
       "name": "navigate",
       "description": "Load url in a tab and wait for the page to finish loading."
     },
