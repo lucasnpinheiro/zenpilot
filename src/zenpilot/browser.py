@@ -348,6 +348,18 @@ def parse_keys(spec: str) -> list[str | tuple[str, ...]]:
     return keys
 
 
+STORAGE_VALUE_MAX = 10_000
+# Fixed script (never model code): the page's web storage as JSON text, values already cut.
+_STORAGE_SCRIPT = (
+    "(() => { const cut = (s) => { const o = {}; try { for (let i = 0; i < s.length; i++) { const k = s.key(i);"
+    " const v = String(s.getItem(k)); o[k] = v.length > 10000 ? v.slice(0, 10000) + '\\u2026' : v; } }"
+    " catch (e) {} return o; };"
+    " let l = {}, x = {}; try { l = cut(window.localStorage); } catch (e) {}"
+    " try { x = cut(window.sessionStorage); } catch (e) {}"
+    " return JSON.stringify({localStorage: l, sessionStorage: x}); })()"
+)
+
+
 def _describe(v: dict, top: bool = True) -> str:
     """Readable text for a BiDi RemoteValue; strings are bare at top level and quoted inside."""
     t, value = v.get("type"), v.get("value")
@@ -850,6 +862,35 @@ class Browser:
         """Response body of a recorded request as (text, is_base64). Raises BiDiError if Zen didn't keep it."""
         r = await self.call("network.getData", {"dataType": "response", "request": request_id})
         return r["bytes"]["value"], r["bytes"]["type"] == "base64"
+
+    async def cookies(self, context: str) -> list[dict]:
+        """All cookies of the tab's context (httpOnly included), values whole. Needs BiDi storage.getCookies."""
+        r = await self.call("storage.getCookies", {"partition": {"type": "context", "context": context}})
+        out = []
+        for c in r.get("cookies", []):
+            value = c.get("value") or {}
+            item = {"name": c.get("name"), "value": value.get("value", "")}
+            if value.get("type") == "base64":
+                item["encoding"] = "base64"
+            for key in ("domain", "path", "httpOnly", "secure", "sameSite", "expiry"):
+                item[key] = c.get(key)
+            out.append(item)
+        return out
+
+    async def storage(self, tab: dict) -> dict:
+        """localStorage and sessionStorage of the tab's page, each value cut to STORAGE_VALUE_MAX chars."""
+        raw = await self.evaluate(tab, _STORAGE_SCRIPT)
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            raise BrowserError("Could not read the page's storage.") from None
+        cut = {}
+        for kind in ("localStorage", "sessionStorage"):
+            items = data.get(kind) or {}
+            cut[kind] = {
+                k: (v if len(v) <= STORAGE_VALUE_MAX else v[:STORAGE_VALUE_MAX] + "…") for k, v in items.items()
+            }
+        return cut
 
     # -- input ----------------------------------------------------------------
 

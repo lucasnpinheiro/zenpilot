@@ -1,7 +1,7 @@
 ---
 id: T-009
-status: TODO
-progress: 0/3
+status: DONE
+progress: 3/3
 updated: 2026-10-29
 depends_on: [T-006]
 ---
