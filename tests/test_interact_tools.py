@@ -301,6 +301,10 @@ class FakeInteract:
         self.calls.append(("upload", key, paths))
         return "ok"
 
+    async def drag(self, from_key, to_key):
+        self.calls.append(("drag", from_key, to_key))
+        return f"Dragged {from_key} to {to_key}."
+
     def dialog_note(self, context):
         return "dialog open: alert hi" if self.dialog else None
 
@@ -578,3 +582,74 @@ async def test_click_tool_passes_button_and_count(zen, monkeypatch):
     monkeypatch.setattr(zen, "click", record, raising=False)
     await server.click(ref="r1", button="right", count=2)
     assert seen == {"key": "r1", "button": "right", "count": 2}
+
+
+# -- drag ---------------------------------------------------------------------
+
+
+async def test_drag_sends_one_pointer_sequence_from_center_to_center(fake_bidi, monkeypatch):
+    b, bidi = await connected_browser(fake_bidi)
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
+    b.refs.add(Ref("t1", "c1", "s2", session=b._session))
+    rects = {"s1": [100, 200, 40, 20], "s2": [300, 400, 20, 20]}
+
+    async def run(context, fn, *args, timeout=15):
+        assert fn == browser_mod.RECT_JS
+        return rects[args[0]["sharedId"]]
+
+    shown = []
+
+    async def record_show(ref, kind, label):
+        shown.append((ref.shared_id, kind, label))
+
+    monkeypatch.setattr(b, "run", run)
+    monkeypatch.setattr(b, "_show", record_show)
+    assert await b.drag("r1", "r2") == "Dragged r1 to r2."
+    action = sent(bidi, "input.performActions")[-1]
+    assert action["context"] == "c1"
+    (pointer,) = action["actions"]
+    assert pointer["id"] == "mouse"
+    moves = [
+        {"type": "pointerMove", "x": 120 + 19 * i, "y": 210 + 20 * i, "origin": "viewport", "duration": 30}
+        for i in range(1, 11)
+    ]
+    assert pointer["actions"] == [
+        {"type": "pointerMove", "x": 120, "y": 210, "origin": "viewport"},
+        {"type": "pointerDown", "button": 0},
+        *moves,
+        {"type": "pointerUp", "button": 0},
+    ]
+    assert shown == [("s1", "drag", "drag")]
+
+
+async def test_drag_tool_refuses_refs_on_different_tabs_before_acting(zen):
+    zen.top_context = lambda ref: {"r1": "c1", "r2": "c2"}[ref]
+    with pytest.raises(ToolError, match="from_ref and to_ref must be on the same tab"):
+        await server.drag(from_ref="r1", to_ref="r2")
+    assert not [c for c in zen.calls if c[0] == "drag"]
+
+
+async def test_drag_tool_passes_both_refs_on_the_same_tab(zen):
+    assert await server.drag(from_ref="r1", to_ref="r2") == "Dragged r1 to r2."
+    assert ("drag", "r1", "r2") in zen.calls
+
+
+async def test_browser_batch_accepts_drag(zen):
+    out = await server.browser_batch(steps=[{"tool": "drag", "args": {"from_ref": "r1", "to_ref": "r2"}}])
+    assert "1. drag: OK" in out
+    assert ("drag", "r1", "r2") in zen.calls
+
+
+async def test_drag_is_blocked_in_read_only_mode(zen, monkeypatch, tmp_path):
+    cfg = Config(
+        allowlist=["localhost"],
+        read_only=True,
+        allow_all_sites=False,
+        port=9222,
+        audit_log=tmp_path / "audit.jsonl",
+        auto_launch=False,
+    )
+    monkeypatch.setattr(server, "load_config", lambda *a, **k: cfg)
+    with pytest.raises(ToolError, match="read-only"):
+        await server.drag(from_ref="r1", to_ref="r2")
+    assert zen.calls == []
