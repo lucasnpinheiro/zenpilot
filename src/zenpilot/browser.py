@@ -42,6 +42,8 @@ DEVTOOLS_EVENTS = {
 BODY_MAX_BYTES = 2_000_000  # response bodies above this are not kept by Zen
 # A click that opens a JavaScript dialog blocks Zen's input reply; give up on it sooner than the default.
 CLICK_TIMEOUT = 5
+# BiDi pointer button codes for click(button=...).
+BUTTONS = {"left": 0, "middle": 1, "right": 2}
 SCROLL_ROUNDS = 8  # wheel actions a scroll may take to reach its target
 # Action overlay (config show_actions): drawn before click, type and hover. Cosmetic, so short and best effort.
 OVERLAY_JS = (files("zenpilot") / "overlay.js").read_text()
@@ -974,8 +976,10 @@ class Browser:
         finally:
             self._busy_input, self._acted = False, time.monotonic()
 
-    async def _click(self, ref: Ref, timeout: float = 30) -> None:
+    async def _click(self, ref: Ref, timeout: float = 30, button: str = "left", count: int = 1) -> None:
         origin = {"type": "element", "element": {"sharedId": ref.shared_id}}
+        bidi_button = BUTTONS[button]
+        presses = [{"type": "pointerDown", "button": bidi_button}, {"type": "pointerUp", "button": bidi_button}]
         await self._actions(
             ref,
             [
@@ -983,11 +987,7 @@ class Browser:
                     "type": "pointer",
                     "id": "mouse",
                     "parameters": {"pointerType": "mouse"},
-                    "actions": [
-                        {"type": "pointerMove", "x": 0, "y": 0, "origin": origin},
-                        {"type": "pointerDown", "button": 0},
-                        {"type": "pointerUp", "button": 0},
-                    ],
+                    "actions": [{"type": "pointerMove", "x": 0, "y": 0, "origin": origin}] + presses * count,
                 }
             ],
             timeout,
@@ -1283,14 +1283,15 @@ class Browser:
             lines.append(f"[{more} more changes; read_page shows the whole page]")
         return "\nPage changes:\n" + untrusted("\n".join(lines), url)
 
-    async def click(self, key: str) -> str:
+    async def click(self, key: str, button: str = "left", count: int = 1) -> str:
         ref, (_, _, cover), note = await self._target(key, self._prepare)
-        await self._show(ref, "click", "click")
+        kind = "right" if button == "right" else "double" if count == 2 else "click"
+        await self._show(ref, kind, kind)
         result = f"Clicked {key}{note}."
         if cover:
             result += f" Note: its center was covered by <{cover}>, which received the click."
         try:
-            nav = await self._settle(ref, lambda: self._click(ref, CLICK_TIMEOUT))
+            nav = await self._settle(ref, lambda: self._click(ref, CLICK_TIMEOUT, button, count))
         except BrowserTimeout:
             # Zen doesn't answer input while a dialog is open; the click itself went through.
             hint = DIALOG_HINT

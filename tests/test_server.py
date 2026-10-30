@@ -46,7 +46,7 @@ class FakeBrowser:
     async def ref_url(self, key):
         return "https://ok.com/form"
 
-    async def click(self, key):
+    async def click(self, key, button="left", count=1):
         return f"Clicked {key}."
 
     async def navigate(self, tab, url):

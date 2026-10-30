@@ -494,3 +494,87 @@ async def test_handle_dialog_returns_metadata_when_closed_event_arrives_first(fa
     bidi.send = send_with_closed_first
     assert await b.handle_dialog({"context": "c1"}, True, "ana") == ("prompt", "name?")
     assert b.dialog_note("c1") is None
+
+
+# -- click button and count -------------------------------------------------
+
+
+async def click_with(fake_bidi, monkeypatch, **kwargs):
+    b, bidi = await connected_browser(fake_bidi)
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
+    fake_bidi.replies["script.callFunction"] = {
+        "type": "success",
+        "result": {
+            "type": "array",
+            "value": [{"type": "string", "value": v} for v in ("ok", "BUTTON", "", "")],
+        },
+    }
+    shown = []
+
+    async def record_show(ref, kind, label):
+        shown.append(kind)
+
+    monkeypatch.setattr(b, "_show", record_show)
+    await b.click("r1", **kwargs)
+    actions = sent(bidi, "input.performActions")[-1]["actions"]
+    assert len(actions) == 1 and actions[0]["id"] == "mouse"
+    return actions[0]["actions"], shown
+
+
+def presses(steps):
+    return [(s["type"], s["button"]) for s in steps if s["type"] != "pointerMove"]
+
+
+async def test_click_default_is_one_left_press(fake_bidi, monkeypatch):
+    steps, shown = await click_with(fake_bidi, monkeypatch)
+    assert steps[0] == {"type": "pointerMove", "x": 0, "y": 0, "origin": {"type": "element", "element": {"sharedId": "s1"}}}
+    assert presses(steps) == [("pointerDown", 0), ("pointerUp", 0)]
+    assert shown == ["click"]
+
+
+async def test_click_right_uses_button_2(fake_bidi, monkeypatch):
+    steps, shown = await click_with(fake_bidi, monkeypatch, button="right")
+    assert presses(steps) == [("pointerDown", 2), ("pointerUp", 2)]
+    assert shown == ["right"]
+
+
+async def test_click_middle_uses_button_1(fake_bidi, monkeypatch):
+    steps, shown = await click_with(fake_bidi, monkeypatch, button="middle")
+    assert presses(steps) == [("pointerDown", 1), ("pointerUp", 1)]
+    assert shown == ["click"]
+
+
+async def test_click_double_sends_two_pairs(fake_bidi, monkeypatch):
+    steps, shown = await click_with(fake_bidi, monkeypatch, count=2)
+    assert presses(steps) == [("pointerDown", 0), ("pointerUp", 0), ("pointerDown", 0), ("pointerUp", 0)]
+    assert shown == ["double"]
+
+
+async def test_click_right_double_keeps_button_on_every_press(fake_bidi, monkeypatch):
+    steps, _ = await click_with(fake_bidi, monkeypatch, button="right", count=2)
+    assert presses(steps) == [("pointerDown", 2), ("pointerUp", 2), ("pointerDown", 2), ("pointerUp", 2)]
+
+
+@pytest.mark.parametrize("kwargs", [{"button": "x1"}, {"button": "Left"}, {"count": 3}, {"count": 0}])
+async def test_click_tool_rejects_bad_button_or_count(zen, kwargs):
+    with pytest.raises(ToolError, match="button must be left, right or middle|count must be 1 or 2"):
+        await server.click(ref="r1", **kwargs)
+
+
+async def test_click_tool_validates_before_browser(zen):
+    with pytest.raises(ToolError, match="button must be left, right or middle"):
+        await server.click(ref="r1", button="side")
+    with pytest.raises(ToolError, match="count must be 1 or 2"):
+        await server.click(ref="r1", count=3)
+
+
+async def test_click_tool_passes_button_and_count(zen, monkeypatch):
+    seen = {}
+
+    async def record(key, button="left", count=1):
+        seen.update(key=key, button=button, count=count)
+        return "ok"
+
+    monkeypatch.setattr(zen, "click", record, raising=False)
+    await server.click(ref="r1", button="right", count=2)
+    assert seen == {"key": "r1", "button": "right", "count": 2}
