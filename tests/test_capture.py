@@ -295,7 +295,7 @@ async def test_ref_tool_records_url_and_shoots_the_refs_tab(run):
     async def ref_url(key):
         return "http://localhost/"
 
-    async def click(ref):
+    async def click(ref, button="left", count=1):
         return "Clicked."
 
     async def screenshot(tab, full_page=False):

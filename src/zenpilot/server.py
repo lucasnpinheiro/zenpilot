@@ -577,13 +577,18 @@ async def _check_ref(key: str) -> None:
 
 
 @tool(mutates=True)
-async def click(ref: str) -> str:
+async def click(ref: str, button: str = "left", count: int = 1) -> str:
     """Click an element by ref (from read_page) with a real mouse event.
 
-    Reports what changed on the page: + lines appeared (new controls get refs), - lines went away.
+    button is left, right or middle; count 2 double-clicks. Reports what changed on the page:
+    + lines appeared (new controls get refs), - lines went away.
     """
+    if button not in ("left", "right", "middle"):
+        raise ToolError("button must be left, right or middle")
+    if count not in (1, 2):
+        raise ToolError("count must be 1 or 2")
     await _check_ref(ref)
-    return await browser.click(ref)
+    return await browser.click(ref, button, count)
 
 
 @tool(mutates=True, redact=("text",))

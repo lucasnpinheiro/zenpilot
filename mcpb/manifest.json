@@ -58,7 +58,7 @@
     },
     {
       "name": "click",
-      "description": "Click an element by ref (from read_page) with a real mouse event."
+      "description": "Click an element by ref (from read_page) with a real mouse event. button is left, right or middle; count 2 double-clicks."
     },
     {
       "name": "type",
