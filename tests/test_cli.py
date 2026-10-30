@@ -107,7 +107,7 @@ def test_allow(tmp_path, monkeypatch, capsys):
     path = tmp_path / "config.toml"
     monkeypatch.setattr(cli, "load_config", lambda: load_config(path))
     monkeypatch.setattr(cli, "set_config_value", lambda k, v: set_config_value(k, v, path))
-    args = type("Args", (), {"domains": ["https://GitHub.com/beSaif", "*.example.org", "localhost"], "remove": False})
+    args = type("Args", (), {"domains": ["https://GitHub.com/beSaif", "*.example.org", "localhost"], "remove": False, "json": False})
     cli.allow(args)
     assert load_config(path).allowlist == ["localhost", "127.0.0.1", "github.com", "example.org"]
     args.domains, args.remove = ["127.0.0.1"], True
@@ -121,12 +121,67 @@ def test_allow_lists_and_removes_sites_allowed_for_a_while(tmp_path, monkeypatch
     monkeypatch.setattr(cli, "load_config", lambda: load_config(path))
     monkeypatch.setattr(cli, "set_config_value", lambda k, v: set_config_value(k, v, path))
     safety.grant("jobs.example.org")
-    args = type("Args", (), {"domains": [], "remove": False})
+    args = type("Args", (), {"domains": [], "remove": False, "json": False})
     cli.allow(args)
     assert "For now: jobs.example.org (until " in capsys.readouterr().out
     args.domains, args.remove = ["jobs.example.org"], True
     cli.allow(args)
     assert safety.grants() == {} and "For now" not in capsys.readouterr().out
+
+
+ALLOW_SCHEMA = {
+    "type": "object",
+    "required": ["allowlist", "grants", "allow_all_sites"],
+    "properties": {
+        "allowlist": {"type": "array", "items": {"type": "string"}},
+        "grants": {"type": "object", "additionalProperties": {"type": "number"}},
+        "allow_all_sites": {"type": "boolean"},
+    },
+    "additionalProperties": False,
+}
+
+
+def _allow_json_setup(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    monkeypatch.setattr(cli, "load_config", lambda: load_config(path))
+    monkeypatch.setattr(cli, "set_config_value", lambda k, v: set_config_value(k, v, path))
+    return path
+
+
+def test_allow_json_one_line_matches_schema_with_only_active_grants(tmp_path, monkeypatch, capsys):
+    jsonschema = pytest.importorskip("jsonschema")
+    path = _allow_json_setup(tmp_path, monkeypatch)
+    set_config_value("allowlist", ["localhost"], path)
+    before = path.read_text()
+    safety.grant("jobs.example.org")
+    safety.grant("old.example.org")
+    monkeypatch.setattr(cli, "grants", lambda: {k: v for k, v in safety.grants().items() if k != "old.example.org"})
+    args = type("Args", (), {"domains": [], "remove": False, "json": True})
+    assert cli.allow(args) == 0
+    out = capsys.readouterr().out
+    assert out.count("\n") == 1
+    data = json.loads(out)
+    jsonschema.validate(data, ALLOW_SCHEMA)
+    assert data["allowlist"] == ["localhost"] and list(data["grants"]) == ["jobs.example.org"]
+    assert data["allow_all_sites"] is False
+    assert path.read_text() == before
+
+
+@pytest.mark.parametrize("domains,remove", [(["x.org"], False), ([], True), (["x.org"], True)])
+def test_allow_json_rejects_domains_and_remove(tmp_path, monkeypatch, capsys, domains, remove):
+    path = _allow_json_setup(tmp_path, monkeypatch)
+    args = type("Args", (), {"domains": domains, "remove": remove, "json": True})
+    assert cli.allow(args) == 2
+    cap = capsys.readouterr()
+    assert cap.out == "" and "--json only lists; drop the domains/--remove" in cap.err
+    assert not path.exists() or "x.org" not in path.read_text()
+
+
+def test_allow_without_json_keeps_human_text(tmp_path, monkeypatch, capsys):
+    _allow_json_setup(tmp_path, monkeypatch)
+    args = type("Args", (), {"domains": [], "remove": False, "json": False})
+    assert cli.allow(args) == 0
+    assert capsys.readouterr().out.startswith("Allowlist: ")
 
 
 def test_zenpilot_in_a_terminal_prints_help(monkeypatch, capsys):

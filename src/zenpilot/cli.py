@@ -203,7 +203,13 @@ def doctor(args) -> int:
 
 
 def allow(args) -> int:
+    if args.json and (args.domains or args.remove):
+        print("zenpilot: --json only lists; drop the domains/--remove", file=sys.stderr)
+        return 2
     cfg = load_config()
+    if args.json:
+        print(json.dumps({"allowlist": cfg.allowlist, "grants": grants(), "allow_all_sites": cfg.allow_all_sites}))
+        return 0
     domains = [normalize_domain(d) for d in args.domains]
     if "" in domains:
         raise ValueError("not a domain: " + args.domains[domains.index("")])
@@ -324,6 +330,7 @@ def main() -> None:
     p = sub.add_parser("allow", help="add sites to the allowlist; with no sites, show it")
     p.add_argument("domains", nargs="*", metavar="domain")
     p.add_argument("--remove", action="store_true", help="take the sites off, including ones allowed for a while")
+    p.add_argument("--json", action="store_true", help="print the allowlist and active grants as one JSON line")
     p = sub.add_parser("report", help="show the latest session report of what Claude couldn't do")
     p.add_argument("file", nargs="?", help="a report to use instead of the latest")
     p.add_argument("--issue", action="store_true", help="open a GitHub issue prefilled with it")
