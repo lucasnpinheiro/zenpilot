@@ -3,7 +3,7 @@ status: TODO
 progress: 0/2
 updated: 2026-10-29
 ---
-# Spec — zenpilot (fork): `allow --json` e gravação da sessão
+# Spec — zenpilot (fork): `allow --json`, gravação da sessão e posse de abas
 
 > Build this with **spec-implement** on the user's literal `executar`. Every criterion becomes a check
 > with a proof, referenced by its number. Nothing under `Unresolved` gets settled while building.
@@ -21,9 +21,12 @@ mostram o que falta. O PRD não traz número de impacto.
 Com a mudança, `zenpilot allow --json` imprime a allowlist, as grants e `allow_all_sites` numa linha
 JSON. `zenpilot record start|stop` grava um frame depois de cada ação e de cada screenshot. No stop,
 gera um `recording.html` (sempre) e um `recording.gif` (só se o Pillow estiver instalado, extra
-`zenpilot[gif]`). As dependências base não mudam.
+`zenpilot[gif]`), guardando as 20 gravações mais recentes, nenhuma com mais de 7 dias. As dependências
+base não mudam. Posse de abas (claudezilla, claude-code-bridge): por padrão (`tab_ownership = "strict"`)
+o Claude só age nas abas que abriu ou que o usuário entregou via `attach_tab`, e nunca nas de outra
+sessão viva. Hoje duas sessões Claude podem clicar na mesma aba sem saber uma da outra.
 
-**12 criteria in 2 slices · 3 one-way doors · 2 open, of which 0 block**
+**22 criteria in 3 slices · 5 one-way doors · 0 open**
 
 | File | Content |
 | --- | --- |
@@ -35,8 +38,7 @@ gera um `recording.html` (sempre) e um `recording.gif` (só se o Pillow estiver 
 
 | # | Kind | Question | Until answered |
 | --- | --- | --- | --- |
-| 1 | open | Retenção das gravações: hoje nenhuma; `recordings/` cresce sem limite. | Default: nada é apagado; o cap de 500 frames por gravação (critério 9) limita cada uma. |
-| 2 | open | Subir isso para o upstream (beSaif/zenpilot) ou manter só no fork? | Default: PR só no fork `lucasnpinheiro/zenpilot`. |
+| — | — | None (retenção = 20 últimas e ≤ 7 dias; PRs só no fork: respostas do usuário em 2026-10-29) | — |
 
 ## Skills
 
@@ -53,4 +55,5 @@ gera um `recording.html` (sempre) e um `recording.gif` (só se o Pillow estiver 
 
 - [x] `git log --diff-filter=D -- '.specs/features/*'` → nenhum.
 - [x] `git log -S record` em `main` @ `8f155ec`: nenhuma gravação. O `runs/` em `~/.local/state/zenpilot` vem da branch `feat/devtools` (HAR + report), não de `main`.
+- [x] posse de abas: `git log -S owner` em `main` → nada; os ids de aba já são compartilhados entre processos em `tabs-<port>.json` (`browser.py:336`).
 - [x] baseline: `uv run pytest -q` → 99 passed, 14 skipped.

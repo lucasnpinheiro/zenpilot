@@ -14,6 +14,8 @@ updated: 2026-10-29
 | server | ponto de captura: o decorator `tool()` (`server.py:118`), dentro de `async with browser.session` logo depois de `browser.mark(..., done=True)` (`server.py:153-154`), só se `ok` e a tool está no conjunto do critério 5; o contexto vem de `_marked.get()` |
 | stored data | nada a migrar; arquivos novos em `STATE_DIR/recordings/` |
 | packaging | extra opcional `gif` |
+| server — posse | o ponto único é `_tab()` (`server.py:277`), que já resolve a aba e aplica a allowlist; `new_tab` (`server.py:310`) e `close_tab` (`server.py:334`) gravam/removem o dono; nova tool `attach_tab` com `@tool()`; `list_tabs` (`server.py:295`) marca as linhas |
+| config | nova chave `tab_ownership` no `DEFAULT_CONFIG` (`safety.py:17`) e em `Config` (`safety.py:74`) |
 
 ## Decided
 
@@ -21,6 +23,8 @@ updated: 2026-10-29
 | --- | --- | --- |
 | 1. Contrato `allow --json` | JSON Schema abaixo, uma linha, exit 0 | Parse do texto humano: quebra a cada mudança de cópia |
 | 2. Estado da gravação entre processos | `save_state("recording", {...})`, o mesmo padrão das grants | Variável em memória: o CLI e o server são processos diferentes |
+| 4. Default de posse | `tab_ownership = "strict"` (escolha do usuário) | `sessions` como default: deixa o Claude agir nas abas logadas do usuário sem pedir |
+| 5. Identidade da sessão | `os.getpid()` + `os.kill(pid, 0)` | ids aleatórios de 128 bits: precisariam de handshake entre processos sem ganho numa máquina só |
 | 3. GIF opcional | `zenpilot[gif]` com Pillow; HTML sempre | Pillow obrigatório: diverge do upstream e pesa no `uvx` |
 
 ```json
@@ -38,12 +42,14 @@ updated: 2026-10-29
 | --- | --- | --- | --- | --- |
 | `zenpilot allow --json` | — | JSON | 0 · 2 | 1-3 |
 | `zenpilot record start` | — | `Recording to <dir>` | 0 | 4 |
+| MCP `attach_tab(tab_id)` | `tab_id` | `Attached tN.` · `tN is already yours.` | ok · ToolError | 19, 20 |
 | `zenpilot record stop` | — | caminhos ou `Not recording` | 0 · 1 | 7, 8, 12 |
 
 ## Research Completeness Gate
 
 - cadeia: CLI `record` → `recording.json` → `tool()` wrapper → `browser.screenshot` (BiDi `captureScreenshot` JPEG 0.8) → arquivo.
 - reuse: `load_state`/`save_state`, `grants()`, `redact`, `audit()`, `browser.screenshot`.
+- edge cases (posse): aba ativa do usuário com `tab_id` ausente (16) · pid reaproveitado pelo SO (aceito: raro, só libera uma aba antiga) · dois processos fazendo `new_tab` ao mesmo tempo (`save_state` atômico; o último grava, então cada um relê antes de gravar) · `prompts=false` (19).
 - edge cases: start duplo (4) · stop sem start (8) · captura falha (6) · 500 frames (9) · 0 frames (12) · sem Pillow (7) · `type` com segredo (5, redigido).
 
 ## Sources

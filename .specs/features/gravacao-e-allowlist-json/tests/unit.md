@@ -13,3 +13,6 @@ updated: 2026-10-29
 | U5 | stop sem PIL (monkeypatch import) | mensagem `pip install 'zenpilot[gif]'` | 7 |
 | U6 | pyproject | `gif` extra; `dependencies` = mcp, websockets | 11 |
 | U7 | cap | frame 501 não grava; audit `record_cap` | 9 |
+| U8 | retenção | 25 dirs (3 > 7 dias, 1 symlink, 1 nome estranho) → sobram 20 + symlink + estranho | 13 |
+| U9 | config `tab_ownership="x"` | erro de config com o texto | 14 |
+| U10 | claim/release/pid morto | arquivo de donos correto; morto = sem dono | 15, 18 |
