@@ -1,6 +1,6 @@
 ---
-status: TODO
-progress: 0/19
+status: DONE
+progress: 19/19
 updated: 2026-10-29
 ---
 # 01 — Criteria · States · Observable · Swept
