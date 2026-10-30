@@ -1067,6 +1067,7 @@ async def run_report(title: str | None = None) -> str:
     Files go in the run's folder under ~/.local/state/zenpilot/runs. run.har is written only when network requests
     were recorded. Returns the paths.
     """
+    from .gif import NoPillow, NoSteps, write_gif
     from .run_report import write_report  # lazy: the report module is only needed here
 
     run_dir = HISTORY.run_dir()
@@ -1085,4 +1086,8 @@ async def run_report(title: str | None = None) -> str:
         title,
         browser.zen_version,
     )
-    return f"Report written: {html} and {data}."
+    text = f"Report written: {html} and {data}."
+    try:
+        return f"{text} GIF: {write_gif(run_dir)}."
+    except (NoPillow, NoSteps):
+        return text

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import report as reports
 from . import zen
+from .history import RUN_NAME, RUNS_DIR
 from .safety import CONFIG_PATH, grants, load_config, normalize_domain, revoke, set_config_value
 
 NAME = "zenpilot"
@@ -238,6 +239,25 @@ def _grants() -> str:
     return ", ".join(f"{d} (until {until(ts)})" for d, ts in sorted(grants().items()))
 
 
+def gif_cmd(args) -> int:
+    from .gif import NoPillow, NoSteps, write_gif
+
+    if args.run:
+        run_dir = Path(args.run).expanduser()
+    else:
+        names = [p.name for p in RUNS_DIR.iterdir() if RUN_NAME.match(p.name)] if RUNS_DIR.is_dir() else []
+        run_dir = RUNS_DIR / max(names) if names else RUNS_DIR
+    try:
+        print(f"GIF: {write_gif(run_dir)}")
+    except NoPillow:
+        print("GIF: pip install 'zenpilot[gif]'", file=sys.stderr)
+        return 1
+    except NoSteps as e:
+        print(e, file=sys.stderr)
+        return 1
+    return 0
+
+
 def report(args) -> int:
     saved = reports.reports(load_config().report_dir)
     if args.list:
@@ -335,6 +355,8 @@ def main() -> None:
     p.add_argument("file", nargs="?", help="a report to use instead of the latest")
     p.add_argument("--issue", action="store_true", help="open a GitHub issue prefilled with it")
     p.add_argument("--list", action="store_true", help="list all reports, newest first")
+    p = sub.add_parser("gif", help="make recording.gif from a run's step screenshots")
+    p.add_argument("run", nargs="?", help="a run folder to use instead of the latest")
     p = sub.add_parser("log", help="print the audit log as a timeline")
     p.add_argument("-n", type=int, default=50, help="show the last N calls (default 50, 0 for all)")
     p.add_argument("--errors", action="store_true", help="only failed calls")
@@ -354,7 +376,15 @@ def main() -> None:
         anyio.run(serve)
         return
     try:
-        commands = {"setup": setup, "launch": launch, "doctor": doctor, "allow": allow, "report": report, "log": log}
+        commands = {
+            "setup": setup,
+            "launch": launch,
+            "doctor": doctor,
+            "allow": allow,
+            "report": report,
+            "log": log,
+            "gif": gif_cmd,
+        }
         sys.exit(commands[command](args))
     except (zen.ZenError, ValueError, OSError, subprocess.SubprocessError) as e:
         sys.exit(f"zenpilot: {e}")
