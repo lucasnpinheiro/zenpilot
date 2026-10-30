@@ -34,6 +34,9 @@ class OwnBrowser(FakeBrowser):
     async def activate(self, tab):
         pass
 
+    async def drag(self, from_key, to_key):
+        return f"Dragged {from_key} to {to_key}."
+
     async def tab(self, tab_id):
         if tab_id == "t9":
             return {"id": "t9", "context": "c9", "url": "about:blank", "title": "", "active": False}
@@ -283,3 +286,13 @@ async def test_list_tabs_off_output_is_unchanged(tmp_path, monkeypatch):
     assert "*t1 https://ok.com/a | Mine" in out
     assert " t2 https://ok.com/b | Theirs" in out
     assert " t3 https://ok.com/c | Loose" in out
+
+
+async def test_drag_blocks_an_unowned_tab_in_strict(strict):
+    with pytest.raises(server.ToolError, match="Tab t1 isn't Claude's"):
+        await server.drag(from_ref="r1", to_ref="r2")
+
+
+async def test_drag_passes_on_own_tab_in_strict(strict):
+    set_owner("t1", os.getpid())
+    assert await server.drag(from_ref="r1", to_ref="r2") == "Dragged r1 to r2."

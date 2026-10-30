@@ -141,6 +141,10 @@
       "description": "Move the mouse over an element by ref, to open menus or show tooltips."
     },
     {
+      "name": "drag",
+      "description": "Drag the mouse from one element (by ref) to another, e.g. to reorder a list or move a card."
+    },
+    {
       "name": "wait_for",
       "description": "Wait until all given hold: text is visible on the page, the ref's element is visible, URL has url_contains."
     },
