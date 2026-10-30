@@ -158,3 +158,45 @@ async def test_ref_tools_block_another_sessions_tab(call, strict):
 async def test_ref_tools_pass_on_an_own_tab(call, strict):
     set_owner("t1", os.getpid())
     assert await call()
+
+
+THREE_TABS = [
+    {"id": "t1", "context": "c1", "url": "https://ok.com/a", "title": "Mine", "active": True},
+    {"id": "t2", "context": "c2", "url": "https://ok.com/b", "title": "Theirs", "active": False},
+    {"id": "t3", "context": "c3", "url": "https://ok.com/c", "title": "Loose", "active": False},
+]
+
+
+def set_owners(owners):
+    safety.save_state(f"owners-{PORT}", {t: {"pid": p, "since": 1.0} for t, p in owners.items()})
+
+
+@pytest.mark.parametrize("mode", ["strict", "sessions"])
+async def test_list_tabs_tags_each_owner_state(mode, tmp_path, monkeypatch):
+    make_env(tmp_path, monkeypatch, mode)
+    server.browser.tabs_list = THREE_TABS
+    set_owners({"t1": os.getpid(), "t2": os.getppid()})
+    out = await server.list_tabs()
+    assert "*t1 [yours] https://ok.com/a | Mine" in out
+    assert " t2 [other session] https://ok.com/b | Theirs" in out
+    assert " t3 [not attached] https://ok.com/c | Loose" in out
+
+
+@pytest.mark.parametrize("mode", ["strict", "sessions"])
+async def test_list_tabs_tags_a_blocked_line_after_the_id(mode, tmp_path, monkeypatch):
+    make_env(tmp_path, monkeypatch, mode)
+    server.browser.tabs_list = [{"id": "t4", "context": "c4", "url": "https://mail.example.com/", "title": "M", "active": False}]
+    set_owners({"t4": os.getppid()})
+    out = await server.list_tabs()
+    assert " t4 [other session] [not allowlisted: mail.example.com" in out
+
+
+async def test_list_tabs_off_output_is_unchanged(tmp_path, monkeypatch):
+    make_env(tmp_path, monkeypatch, "off")
+    server.browser.tabs_list = THREE_TABS
+    set_owners({"t1": os.getpid(), "t2": os.getppid()})
+    out = await server.list_tabs()
+    assert "[yours]" not in out and "[other session]" not in out and "[not attached]" not in out
+    assert "*t1 https://ok.com/a | Mine" in out
+    assert " t2 https://ok.com/b | Theirs" in out
+    assert " t3 https://ok.com/c | Loose" in out
