@@ -42,6 +42,8 @@ DEVTOOLS_EVENTS = {
 BODY_MAX_BYTES = 2_000_000  # response bodies above this are not kept by Zen
 # A click that opens a JavaScript dialog blocks Zen's input reply; give up on it sooner than the default.
 CLICK_TIMEOUT = 5
+DRAG_STEPS = 10  # pointer moves between the two elements
+DRAG_STEP_MS = 30  # ms per move, ~300 ms in all
 # BiDi pointer button codes for click(button=...).
 BUTTONS = {"left": 0, "middle": 1, "right": 2}
 SCROLL_ROUNDS = 8  # wheel actions a scroll may take to reach its target
@@ -1121,6 +1123,41 @@ class Browser:
             ],
         )
         return f"Hovered {key}."
+
+    async def _center(self, key: str, ref: Ref) -> tuple[int, int]:
+        """The center of a ref's element, in viewport pixels."""
+        try:
+            x, y, w, h = await self.run(ref.context, RECT_JS, {"sharedId": ref.shared_id})
+        except BiDiError as e:
+            if e.error in STALE_ERRORS:
+                raise _stale(key) from None
+            raise
+        return round(x + w / 2), round(y + h / 2)
+
+    async def drag(self, from_key: str, to_key: str) -> str:
+        """Press on one element and drag to another: one pointer sequence, with 10 interpolated moves."""
+        from_ref, start, _ = await self._target(from_key, self._center)
+        to_ref, end, _ = await self._target(to_key, self._center)
+        await self._show(from_ref, "drag", "drag")
+        (fx, fy), (tx, ty) = start, end
+        steps = [{"type": "pointerMove", "x": fx, "y": fy, "origin": "viewport"}, {"type": "pointerDown", "button": 0}]
+        for i in range(1, DRAG_STEPS + 1):
+            x, y = round(fx + (tx - fx) * i / DRAG_STEPS), round(fy + (ty - fy) * i / DRAG_STEPS)
+            steps.append({"type": "pointerMove", "x": x, "y": y, "origin": "viewport", "duration": DRAG_STEP_MS})
+        steps.append({"type": "pointerUp", "button": 0})
+        action = [{"type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"}, "actions": steps}]
+        try:
+            nav = await self._settle(from_ref, lambda: self._actions(from_ref, action))
+        except BrowserTimeout:
+            # Zen doesn't answer input while a dialog is open; the drag itself went through.
+            hint = DIALOG_HINT
+            if dialog := self.dialog_note(self.top_context(from_ref)):
+                hint = f"{dialog}. {hint}"
+            return hint
+        result = f"Dragged {from_key} to {to_key}."
+        if nav:
+            return result + f" {nav}."
+        return result + await self._changes(from_ref)
 
     async def wait_for(
         self, tab: dict, *, text: str | None, key: str | None, url_contains: str | None, timeout_ms: int

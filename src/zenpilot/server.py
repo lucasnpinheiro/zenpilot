@@ -1095,6 +1095,19 @@ async def hover(ref: str) -> str:
     return await browser.hover(ref)
 
 
+@tool(mutates=True)
+async def drag(from_ref: str, to_ref: str) -> str:
+    """Drag the mouse from one element (by ref) to another, e.g. to reorder a list or move a card.
+
+    Both refs must be on the same tab. Reports what changed on the page, like click.
+    """
+    await _check_ref(from_ref)
+    await _check_ref(to_ref)
+    if browser.top_context(browser.ref(from_ref)) != browser.top_context(browser.ref(to_ref)):
+        raise ToolError("from_ref and to_ref must be on the same tab")
+    return await browser.drag(from_ref, to_ref)
+
+
 @tool()
 async def wait_for(
     text: str | None = None,
