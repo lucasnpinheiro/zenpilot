@@ -228,6 +228,8 @@ TAB_STATE_JS = "() => [document.title, document.visibilityState, document.hasFoc
 SCROLL_INFO_JS = """() => [innerWidth, innerHeight, scrollX, scrollY,
   document.documentElement.scrollWidth, document.documentElement.scrollHeight]"""
 
+VIEWPORT_JS = "() => [window.innerWidth, window.innerHeight]"
+
 # Scroll offsets of the window and everything under the viewport's center.
 SCROLL_STATE_JS = """() => {
   const out = [scrollX, scrollY];
@@ -324,6 +326,11 @@ NAMED_KEYS = {
     "pagedown": "\ue00f",
     **{f"f{n}": chr(0xE031 + n - 1) for n in range(1, 13)},
 }
+
+
+def _pointer_source(steps: list[dict]) -> dict:
+    """A mouse input source with its pointer steps."""
+    return {"type": "pointer", "id": "mouse", "parameters": {"pointerType": "mouse"}, "actions": steps}
 
 
 def _key_code(name: str) -> str:
@@ -970,9 +977,12 @@ class Browser:
         return tag, kind, cover
 
     async def _actions(self, ref: Ref, actions: list[dict], timeout: float = 30) -> None:
+        await self._actions_in(ref.context, actions, timeout)
+
+    async def _actions_in(self, context: str, actions: list[dict], timeout: float = 30) -> None:
         self._busy_input = True
         try:
-            await self.call("input.performActions", {"context": ref.context, "actions": actions}, timeout)
+            await self.call("input.performActions", {"context": context, "actions": actions}, timeout)
         finally:
             self._busy_input, self._acted = False, time.monotonic()
 
@@ -1483,3 +1493,48 @@ class Browser:
             state = new
         _, h, x, y, sw, sh = await self.run(ctx, SCROLL_INFO_JS)
         return f"Scrolled {direction}. Viewport now at y={y:.0f} of {sh:.0f} (height {h:.0f}), x={x:.0f} of {sw:.0f}."
+
+    async def viewport(self, tab: dict) -> tuple[int, int]:
+        """Viewport size of a tab, in CSS pixels."""
+        w, h = await self.run(tab["context"], VIEWPORT_JS)
+        return int(w), int(h)
+
+    async def _show_at(self, context: str, x: int, y: int, kind: str, label: str) -> None:
+        """Draw an action at a viewport point, if show_actions is on. Best effort, like _show."""
+        if not self.show_actions:
+            return
+        try:
+            rect = {"x": x, "y": y, "w": 1, "h": 1}
+            await self.run(context, OVERLAY_JS, x + 0.5, y + 0.5, kind, label, rect, timeout=OVERLAY_TIMEOUT)
+            await asyncio.sleep(SHOW_PAUSE)
+        except Exception:  # cosmetic: the action goes ahead either way
+            log.debug("action overlay failed", exc_info=True)
+
+    async def move_to(self, tab: dict, x: int, y: int) -> None:
+        """Move the pointer to viewport pixel (x, y) of a tab."""
+        await self._show_at(tab["context"], x, y, "move", "move")
+        move = {"type": "pointerMove", "x": x, "y": y, "origin": "viewport"}
+        await self._actions_in(tab["context"], [_pointer_source([move])])
+
+    async def click_at(self, tab: dict, x: int, y: int, button: str, count: int) -> str:
+        """Move to viewport pixel (x, y) of a tab and click there; reports what changed, like click."""
+        context = tab["context"]
+        kind = "right" if button == "right" else "double" if count == 2 else "click"
+        await self._show_at(context, x, y, kind, kind)
+        code = BUTTONS[button]
+        move = {"type": "pointerMove", "x": x, "y": y, "origin": "viewport"}
+        presses = [{"type": "pointerDown", "button": code}, {"type": "pointerUp", "button": code}]
+        source = _pointer_source([move] + presses * count)
+        ref = Ref(tab["id"], context, "")
+        result = f"Clicked at {x}, {y}."
+        try:
+            nav = await self._settle(ref, lambda: self._actions_in(context, [source], CLICK_TIMEOUT))
+        except BrowserTimeout:
+            # Zen doesn't answer input while a dialog is open; the click itself went through.
+            hint = DIALOG_HINT
+            if dialog := self.dialog_note(self.top_context(ref)):
+                hint = f"{dialog}. {hint}"
+            return hint
+        if nav:
+            return result + f" {nav}."
+        return result + await self._changes(ref)
