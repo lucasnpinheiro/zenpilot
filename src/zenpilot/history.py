@@ -1,9 +1,11 @@
 """In-memory action history of one zenpilot run: what ran, how it ended, and a readable listing."""
 
+import re
 import secrets
+import shutil
 from collections import deque
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 ARG_MAX = 40  # characters kept per argument value in format_history
@@ -23,6 +25,33 @@ class Record:
     url: str | None = None
     screenshot: str | None = None
     batch: bool = False
+
+
+RUN_NAME = re.compile(r"^(\d{8}T\d{6}Z)-[0-9a-f]{4}$")
+
+
+def prune_runs(base: Path, now: datetime, keep: int = 20, max_days: int = 7) -> None:
+    """Delete run dirs older than max_days, then the oldest beyond keep. Only real, well-named dirs."""
+    try:
+        entries = sorted(base.iterdir(), key=lambda p: p.name)
+    except OSError:
+        return
+    runs: list[Path] = []
+    cutoff = now - timedelta(days=max_days)
+    for path in entries:
+        m = RUN_NAME.match(path.name)
+        try:
+            if not m or path.is_symlink() or not path.is_dir():
+                continue
+            when = datetime.strptime(m.group(1), "%Y%m%dT%H%M%SZ").replace(tzinfo=UTC)
+        except (OSError, ValueError):
+            continue
+        if when < cutoff:
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            runs.append(path)
+    for path in runs[: max(0, len(runs) - keep)]:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 def _utc_now() -> datetime:
@@ -91,7 +120,10 @@ class History:
 
     def run_dir(self, base: Path = RUNS_DIR) -> Path:
         path = base / self.run_id
+        fresh = not path.exists()
         path.mkdir(parents=True, exist_ok=True)
+        if fresh:
+            prune_runs(base, self._now())
         return path
 
 

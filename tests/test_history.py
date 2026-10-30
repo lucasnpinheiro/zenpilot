@@ -3,13 +3,13 @@
 import contextlib
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from mcp.server.mcpserver.exceptions import ToolError
 
 from zenpilot import server
-from zenpilot.history import History, format_history
+from zenpilot.history import History, format_history, prune_runs
 from zenpilot.safety import Config
 
 T0 = datetime(2026, 10, 27, 12, 0, 0, tzinfo=UTC)
@@ -261,3 +261,42 @@ async def test_new_tab_with_url_records_the_new_tabs_url(hist, monkeypatch):
 def test_message_skips_the_untrusted_fence_line():
     wrapped = server.untrusted("Tab t1\nr1 button", "http://localhost/")
     assert server._message(wrapped, None) == "Tab t1"
+
+
+def _mk_run(base, when, suffix):
+    d = base / f"{when:%Y%m%dT%H%M%SZ}-{suffix}"
+    d.mkdir()
+    return d
+
+
+def test_run_dir_prunes_old_and_excess_runs_once(tmp_path):
+    base = tmp_path / "runs"
+    base.mkdir()
+    old = [_mk_run(base, T0 - timedelta(days=10 + i), "aaa0") for i in range(3)]
+    recent = [_mk_run(base, T0 - timedelta(hours=i + 1), f"bb{i:02x}") for i in range(22)]
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("x")
+    link = base / "20200101T000000Z-cccc"
+    link.symlink_to(outside, target_is_directory=True)
+    odd = base / "notes"
+    odd.mkdir()
+
+    h = History(now=clock(T0))
+    path = h.run_dir(base)
+
+    valid = [d for d in base.iterdir() if d.is_dir() and not d.is_symlink() and re.fullmatch(r"\d{8}T\d{6}Z-[0-9a-f]{4}", d.name)]
+    assert len(valid) == 20
+    assert path in valid
+    assert not any(o.exists() for o in old)
+    assert sum(r.exists() for r in recent) == 19
+    assert link.is_symlink() and (outside / "keep.txt").read_text() == "x"
+    assert odd.is_dir()
+
+    before = sorted(base.iterdir())
+    h.run_dir(base)
+    assert sorted(base.iterdir()) == before
+
+
+def test_prune_runs_ignores_missing_base(tmp_path):
+    prune_runs(tmp_path / "nope", T0)
