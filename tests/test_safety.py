@@ -1,10 +1,13 @@
 """Allowlist, config and untrusted-content fencing."""
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from zenpilot import safety
 from zenpilot.safety import Blocked, Config, audit, check_upload, check_url, domain_of, load_config, untrusted
 
 
@@ -172,3 +175,43 @@ def test_audit_can_leave_out_query_strings(tmp_path):
     record = json.loads(c.audit_log.read_text())
     assert record["params"] == {"url": "https://x.com/intent/post", "tab_id": "t1"}
     assert record["error"] == "Now at https://x.com/intent/post Blocked."
+
+
+def test_tab_ownership_defaults_to_strict(tmp_path):
+    c = load_config(tmp_path / "config.toml")
+    assert c.tab_ownership == "strict"
+    assert "tab_ownership" in (tmp_path / "config.toml").read_text()
+
+
+@pytest.mark.parametrize("value", ["strict", "sessions", "off"])
+def test_tab_ownership_accepts_valid_values(tmp_path, value):
+    path = tmp_path / "config.toml"
+    path.write_text(f'tab_ownership = "{value}"\n')
+    assert load_config(path).tab_ownership == value
+
+
+def test_tab_ownership_rejects_other_values(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('tab_ownership = "loose"\n')
+    with pytest.raises(ValueError, match="tab_ownership must be strict, sessions or off"):
+        load_config(path)
+
+
+def test_claim_owner_release_roundtrip():
+    assert safety.owner_of(9222, "t1") is None
+    safety.claim(9222, "t1")
+    assert safety.owner_of(9222, "t1") == os.getpid()
+    assert safety.owner_of(9333, "t1") is None
+    safety.claim(9222, "t2")
+    safety.release(9222, "t1")
+    assert safety.owner_of(9222, "t1") is None
+    assert safety.owner_of(9222, "t2") == os.getpid()
+
+
+def test_dead_owner_pid_means_no_owner():
+    proc = subprocess.Popen(["true"])
+    proc.wait()
+    assert not safety.alive(proc.pid)
+    safety.save_state("owners-9222", {"t1": {"pid": proc.pid, "since": 1.0}})
+    assert safety.owner_of(9222, "t1") is None
+    assert safety.alive(os.getpid())
