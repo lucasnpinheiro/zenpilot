@@ -1,6 +1,6 @@
 """End to end against a live Zen: MCP stdio client -> zenpilot -> BiDi -> fixture page.
 
-Needs Zen running with --remote-debugging-port 9222 (`zenpilot launch`); skipped otherwise.
+Needs Zen running on the port from zen_port() (`zenpilot launch`); skipped otherwise.
 ZENPILOT_TEST_PORT picks another port, e.g. a second Zen on a test profile:
 `open -na /Applications/Zen.app --args -P zenpilot --remote-debugging-port 9333`.
 Uses its own temp config and state, so your allowlist, audit log and tab ids are untouched.
@@ -11,7 +11,6 @@ import base64
 import functools
 import http.server
 import json
-import os
 import re
 import shutil
 import socket
@@ -25,9 +24,6 @@ from zen_port import zen_port
 
 ROOT = Path(__file__).parent.parent
 FIXTURE = ROOT / "tests" / "fixture"
-PORT = int(os.environ.get("ZENPILOT_TEST_PORT", "9222"))
-
-
 PORT = zen_port()
 
 

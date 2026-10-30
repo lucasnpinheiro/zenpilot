@@ -10,6 +10,14 @@ from zenpilot.safety import Config
 
 
 class FakeUpload:
+    stopped = False  # the badge's Stop button, read by every tool call
+
+    def ref_key(self, key):
+        return None
+
+    async def mark(self, context, action=None):
+        pass
+
     def __init__(self):
         self.calls = []
 

@@ -19,6 +19,14 @@ JPEG = b"jpeg-bytes"
 
 
 class FakeCaptureBrowser:
+    stopped = False  # the badge's Stop button, read by every tool call
+
+    def ref_key(self, key):
+        return None
+
+    async def mark(self, context, action=None):
+        pass
+
     connected = True
 
     def __init__(self):

@@ -211,7 +211,7 @@ async def test_handle_dialog_without_dialog_is_browser_error(fake_bidi):
 
 async def test_file_upload_sets_files_on_file_input(fake_bidi, tmp_path):
     b, bidi = await connected_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     fake_bidi.replies["script.callFunction"] = {"type": "success", "result": {"type": "boolean", "value": True}}
     f = tmp_path / "a.txt"
     f.write_text("x")
@@ -225,7 +225,7 @@ async def test_file_upload_sets_files_on_file_input(fake_bidi, tmp_path):
 
 async def test_file_upload_rejects_non_file_input(fake_bidi):
     b, bidi = await connected_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     fake_bidi.replies["script.callFunction"] = {"type": "success", "result": {"type": "boolean", "value": False}}
     with pytest.raises(BrowserError, match="not a file input"):
         await b.file_upload("r1", ["/tmp/x"])
@@ -234,7 +234,7 @@ async def test_file_upload_rejects_non_file_input(fake_bidi):
 
 async def test_click_on_a_dialog_opener_returns_a_hint_instead_of_hanging(fake_bidi):
     b, bidi = await connected_browser(fake_bidi)
-    b.refs.add(Ref("t1", "c1", "s1"))
+    b.refs.add(Ref("t1", "c1", "s1", session=b._session))
     fake_bidi.replies["script.callFunction"] = {
         "type": "success",
         "result": {
@@ -251,6 +251,14 @@ async def test_click_on_a_dialog_opener_returns_a_hint_instead_of_hanging(fake_b
 
 
 class FakeInteract:
+    stopped = False  # the badge's Stop button, read by every tool call
+
+    def ref_key(self, key):
+        return None
+
+    async def mark(self, context, action=None):
+        pass
+
     connected = True
 
     def __init__(self):
