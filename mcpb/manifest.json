@@ -77,6 +77,14 @@
       "description": "Scroll the page with the mouse wheel by amount pixels."
     },
     {
+      "name": "mouse_move",
+      "description": "Move the mouse pointer to x, y, in CSS pixels from the top-left of the viewport."
+    },
+    {
+      "name": "click_at",
+      "description": "Click at x, y, in CSS pixels from the top-left of the viewport, without a ref. button is left, right or middle; count 2 double-clicks."
+    },
+    {
       "name": "screenshot",
       "description": "Screenshot of the visible part of a tab."
     },

@@ -576,6 +576,13 @@ async def _check_ref(key: str) -> None:
     await _mark(context)
 
 
+def _check_button_count(button: str, count: int) -> None:
+    if button not in ("left", "right", "middle"):
+        raise ToolError("button must be left, right or middle")
+    if count not in (1, 2):
+        raise ToolError("count must be 1 or 2")
+
+
 @tool(mutates=True)
 async def click(ref: str, button: str = "left", count: int = 1) -> str:
     """Click an element by ref (from read_page) with a real mouse event.
@@ -583,10 +590,7 @@ async def click(ref: str, button: str = "left", count: int = 1) -> str:
     button is left, right or middle; count 2 double-clicks. Reports what changed on the page:
     + lines appeared (new controls get refs), - lines went away.
     """
-    if button not in ("left", "right", "middle"):
-        raise ToolError("button must be left, right or middle")
-    if count not in (1, 2):
-        raise ToolError("count must be 1 or 2")
+    _check_button_count(button, count)
     await _check_ref(ref)
     return await browser.click(ref, button, count)
 
@@ -648,6 +652,33 @@ async def scroll(
     """Scroll the page with the mouse wheel by amount pixels."""
     tab = await _tab(tab_id)
     return await browser.scroll(tab, direction, max(1, min(amount, 10_000)))
+
+
+async def _check_point(tab: dict, x: int, y: int) -> None:
+    w, h = await browser.viewport(tab)
+    if not (0 <= x < w and 0 <= y < h):
+        raise ToolError(f"x, y outside the viewport ({w}x{h})")
+
+
+@tool(mutates=True)
+async def mouse_move(x: int, y: int, tab_id: str | None = None) -> str:
+    """Move the mouse pointer to x, y, in CSS pixels from the top-left of the viewport."""
+    tab = await _tab(tab_id)
+    await _check_point(tab, x, y)
+    await browser.move_to(tab, x, y)
+    return f"Moved to {x}, {y}."
+
+
+@tool(mutates=True)
+async def click_at(x: int, y: int, button: str = "left", count: int = 1, tab_id: str | None = None) -> str:
+    """Click at x, y, in CSS pixels from the top-left of the viewport, without a ref.
+
+    button is left, right or middle; count 2 double-clicks. Reports what changed on the page, like click.
+    """
+    _check_button_count(button, count)
+    tab = await _tab(tab_id)
+    await _check_point(tab, x, y)
+    return await browser.click_at(tab, x, y, button, count)
 
 
 @tool()
