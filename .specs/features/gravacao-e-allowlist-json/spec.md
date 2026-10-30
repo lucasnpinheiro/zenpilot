@@ -1,6 +1,6 @@
 ---
-status: IN_PROGRESS
-progress: 3/4
+status: DONE
+progress: 4/4
 updated: 2026-10-29
 ---
 # Spec — zenpilot (fork): `allow --json`, gravação da sessão e posse de abas
