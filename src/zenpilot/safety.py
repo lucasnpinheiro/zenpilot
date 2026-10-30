@@ -56,8 +56,6 @@ prompts = true
 # only its length. `zenpilot log` prints it as a timeline.
 audit_log = "~/.local/state/zenpilot/audit.jsonl"
 
-# file_upload may only send files from ~/.local/state/zenpilot/uploads or from these folders.
-upload_dirs = []
 # A session with failed or slow tool calls, or things Claude couldn't do, leaves a report
 # here. `zenpilot report --issue` turns the latest into a GitHub issue.
 report_dir = "~/.local/state/zenpilot/reports"
@@ -69,6 +67,10 @@ audit_redact_urls = false
 # Folders whose files the upload tool may put into a page's file inputs, e.g.
 # ["~/Documents/Applications"]. Subfolders count too. Empty: uploads are off.
 upload_dirs = []
+
+# Which tabs Claude may act on. "strict": only tabs it opened or you gave it with attach_tab.
+# "sessions": only blocks tabs another live Claude session is using. "off": no checks.
+tab_ownership = "strict"
 """
 
 # Pages that carry no site content and inherit nothing worth protecting.
@@ -95,9 +97,9 @@ class Config:
     allow_scripts: bool = False
     show_actions: bool = True
     capture_actions: bool = False
-    upload_dirs: list[str] = field(default_factory=list)  # extra folders file_upload may read from
     report_dir: Path = Path("~/.local/state/zenpilot/reports").expanduser()
     audit_redact_urls: bool = False
+    tab_ownership: str = "strict"
     upload_dirs: list[Path] = field(default_factory=list)
 
 
@@ -113,6 +115,9 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
     upload_dirs = raw.get("upload_dirs", [])
     if not isinstance(upload_dirs, list) or not all(isinstance(d, str) for d in upload_dirs):
         raise ValueError(f"{path}: upload_dirs must be a list of folder paths")
+    tab_ownership = raw.get("tab_ownership", defaults["tab_ownership"])
+    if tab_ownership not in ("strict", "sessions", "off"):
+        raise ValueError(f"{path}: tab_ownership must be strict, sessions or off")
     return Config(
         allowlist=[normalize_domain(d) for d in allowlist if d.strip()],
         read_only=bool(raw.get("read_only", False)),
@@ -125,9 +130,9 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         allow_scripts=raw.get("allow_scripts", defaults["allow_scripts"]) is True,
         show_actions=raw.get("show_actions", defaults["show_actions"]) is not False,
         capture_actions=raw.get("capture_actions", defaults["capture_actions"]) is True,
-        upload_dirs=[d for d in upload_dirs if d.strip()],
         report_dir=Path(raw.get("report_dir", defaults["report_dir"])).expanduser(),
         audit_redact_urls=raw.get("audit_redact_urls", False) is True,
+        tab_ownership=tab_ownership,
         upload_dirs=[Path(d).expanduser().resolve() for d in upload_dirs if d.strip()],
     )
 
@@ -222,6 +227,34 @@ def grant(domain: str) -> None:
 
 def revoke(domains: list[str]) -> None:
     save_state("grants", {d: until for d, until in grants().items() if d not in domains})
+
+
+# Which Claude session (server process) owns a tab: {tab_id: {"pid", "since"}}, one file per port.
+def alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def owner_of(port: int, tab_id: str) -> int | None:
+    """Pid of the live session that owns the tab; None when unowned or the owner is gone."""
+    entry = load_state(f"owners-{port}").get(tab_id)
+    pid = entry.get("pid") if isinstance(entry, dict) else None
+    return pid if isinstance(pid, int) and alive(pid) else None
+
+
+def claim(port: int, tab_id: str) -> None:
+    name = f"owners-{port}"
+    save_state(name, load_state(name) | {tab_id: {"pid": os.getpid(), "since": time.time()}})
+
+
+def release(port: int, tab_id: str) -> None:
+    name = f"owners-{port}"
+    save_state(name, {t: e for t, e in load_state(name).items() if t != tab_id})
 
 
 _TAG = "untrusted_web_content"
