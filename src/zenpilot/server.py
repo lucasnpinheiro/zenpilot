@@ -473,6 +473,42 @@ async def close_tab(tab_id: str) -> str:
     return f"Closed {tab['id']}."
 
 
+def _attach_dialog(tab_id: str, url: str) -> str | None:
+    """Ask the user to give a tab to Claude. None if nobody answered. Runs in a thread."""
+    parts = urlsplit(url)
+    page = f"{parts.netloc}{parts.path}".rstrip("/")
+    page = page if len(page) <= 80 else page[:79] + "\u2026"
+    return dialogs.ask(f"Claude wants to control tab {tab_id} in Zen:\n{page}", ["Don't Allow", "Allow"], "Don't Allow")
+
+
+@tool()
+async def attach_tab(tab_id: str) -> str:
+    """Ask the user to give Claude a tab it didn't open."""
+    tab = await browser.tab(tab_id)
+    _domain.set(domain_of(tab["url"]))
+    cfg = _cfg.get()
+    check_url(tab["url"], cfg)
+    owner = owner_of(cfg.port, tab["id"])
+    if owner == os.getpid():
+        return f"{tab['id']} is already yours."
+    if owner is not None:
+        raise Blocked(
+            f"Tab {tab['id']} belongs to another Claude session (zenpilot pid {owner}). Use your own tabs (new_tab)."
+        )
+    if not cfg.prompts:
+        raise Blocked("Prompts are off: ask the user to open the page with new_tab or to set tab_ownership.")
+    answer = await anyio.to_thread.run_sync(_attach_dialog, tab["id"], tab["url"])
+    if answer is None:
+        raise Blocked(
+            f"Nobody answered the dialog asking to give tab {tab['id']} to Claude "
+            f"(it closes after {dialogs.TIMEOUT}s). Ask the user, then try again."
+        )
+    if answer != "Allow":
+        raise Blocked(f"The user didn't give tab {tab['id']} to Claude. Don't work around it.")
+    claim(cfg.port, tab["id"])
+    return f"Attached {tab['id']}."
+
+
 async def _arrival(final: str, loading: bool) -> str:
     """Report where a navigation ended. A redirect to a blocked site (a login page, say) asks the user."""
     msg = f"Now at {final}" + (" (still loading)." if loading else ".")

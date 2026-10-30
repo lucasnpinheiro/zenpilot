@@ -5,7 +5,7 @@ import os
 import pytest
 from test_server import FakeBrowser
 
-from zenpilot import safety, server
+from zenpilot import dialogs, safety, server
 from zenpilot.safety import Config
 
 pytestmark = pytest.mark.ownership
@@ -158,3 +158,84 @@ async def test_ref_tools_block_another_sessions_tab(call, strict):
 async def test_ref_tools_pass_on_an_own_tab(call, strict):
     set_owner("t1", os.getpid())
     assert await call()
+
+
+ATTACH_TEXT = "Claude wants to control tab t1 in Zen:\nok.com/form"
+
+
+def fake_ask(monkeypatch, answer):
+    seen = {}
+
+    def ask(message, buttons, default):
+        seen.update(message=message, buttons=buttons, default=default)
+        return answer
+
+    monkeypatch.setattr(dialogs, "ask", ask)
+    return seen
+
+
+def no_dialog(monkeypatch):
+    def ask(message, buttons, default):
+        raise AssertionError("no dialog expected")
+
+    monkeypatch.setattr(dialogs, "ask", ask)
+
+
+async def test_attach_allow_gives_the_tab(strict, monkeypatch):
+    seen = fake_ask(monkeypatch, "Allow")
+    assert await server.attach_tab(tab_id="t1") == "Attached t1."
+    assert safety.owner_of(PORT, "t1") == os.getpid()
+    assert seen == {"message": ATTACH_TEXT, "buttons": ["Don't Allow", "Allow"], "default": "Don't Allow"}
+
+
+async def test_attach_dont_allow_is_blocked(strict, monkeypatch):
+    fake_ask(monkeypatch, "Don't Allow")
+    with pytest.raises(server.ToolError) as e:
+        await server.attach_tab(tab_id="t1")
+    assert "The user didn't give tab t1 to Claude. Don't work around it." in str(e.value)
+    assert safety.owner_of(PORT, "t1") is None
+
+
+async def test_attach_no_answer_is_blocked(strict, monkeypatch):
+    fake_ask(monkeypatch, None)
+    with pytest.raises(server.ToolError) as e:
+        await server.attach_tab(tab_id="t1")
+    assert (
+        f"Nobody answered the dialog asking to give tab t1 to Claude (it closes after {dialogs.TIMEOUT}s). "
+        "Ask the user, then try again."
+    ) in str(e.value)
+    assert safety.owner_of(PORT, "t1") is None
+
+
+async def test_attach_prompts_off_is_blocked(strict, monkeypatch):
+    cfg = server.load_config()
+    cfg.prompts = False
+    monkeypatch.setattr(server, "load_config", lambda: cfg)
+    no_dialog(monkeypatch)
+    with pytest.raises(server.ToolError) as e:
+        await server.attach_tab(tab_id="t1")
+    assert "Prompts are off: ask the user to open the page with new_tab or to set tab_ownership." in str(e.value)
+
+
+async def test_attach_own_tab_is_already_yours(strict, monkeypatch):
+    set_owner("t1", os.getpid())
+    no_dialog(monkeypatch)
+    assert await server.attach_tab(tab_id="t1") == "t1 is already yours."
+
+
+async def test_attach_other_live_session_is_blocked(strict, monkeypatch):
+    other = os.getppid()
+    set_owner("t1", other)
+    no_dialog(monkeypatch)
+    with pytest.raises(server.ToolError) as e:
+        await server.attach_tab(tab_id="t1")
+    assert f"Tab t1 belongs to another Claude session (zenpilot pid {other}). Use your own tabs (new_tab)." in str(
+        e.value
+    )
+
+
+async def test_attach_url_not_allowlisted_is_blocked(strict, monkeypatch):
+    fake_ask(monkeypatch, None)
+    with pytest.raises(server.ToolError, match="Nobody answered the dialog asking to allow 'mail.example.com'"):
+        await server.attach_tab(tab_id="t2")
+    assert safety.owner_of(PORT, "t2") is None
