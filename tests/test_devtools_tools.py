@@ -161,6 +161,14 @@ def test_har_default_path_under_state_dir(monkeypatch, tmp_path):
 class FakeTabBrowser:
     """Stands in for Browser inside the server tools: one tab on context c1."""
 
+    stopped = False  # the badge's Stop button, read by every tool call
+
+    def ref_key(self, key):
+        return None
+
+    async def mark(self, context, action=None):
+        pass
+
     connected = True
 
     def __init__(self, devtools):

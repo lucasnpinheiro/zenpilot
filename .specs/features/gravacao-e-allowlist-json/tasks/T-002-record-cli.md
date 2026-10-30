@@ -5,7 +5,7 @@ progress: 0/2
 updated: 2026-10-29
 depends_on: []
 ---
-# T-002 — Estado da gravação + `record start|stop`
+# T-002 — Retenção de `runs/`
 
-1. Novo módulo `src/zenpilot/recording.py`: `start() -> (dir, already)`, `active() -> dict | None`, `stop() -> dict | None`, sobre `load_state`/`save_state("recording")` (Decided 2); diretório `STATE_DIR/recordings/<UTC>`.
-2. `cli.py`: subparser `record` com `action` em `{start, stop}`; mensagens e exit codes dos critérios 4 e 8; retenção do critério 13 em `recording.prune(root, now)` chamada no start (o render do stop vem em T-004; aqui o stop só fecha o estado). RED em `tests/test_recording.py` com `ZENPILOT_STATE` em `tmp_path` (retenção: 25 diretórios, 3 com mais de 7 dias, um symlink e um nome fora do padrão → sobram 20 e o symlink/estranho intactos).
+1. `history.py`: `prune_runs(base, keep=20, max_days=7, now)` — só subdiretórios reais (`is_dir()` e não `is_symlink()`) com nome `^\d{8}T\d{6}Z-[0-9a-f]{4}$`; apaga os com data do nome > 7 dias e depois os mais antigos além de 20; `shutil.rmtree(ignore_errors=True)`. `History.run_dir()` chama na primeira criação do diretório do run (`not path.exists()` antes do `mkdir`) (8).
+2. RED em `tests/test_history.py`: 25 dirs (3 com mais de 7 dias), 1 symlink, 1 nome estranho → sobram 20 + symlink + estranho; a segunda chamada de `run_dir()` não apaga nada.

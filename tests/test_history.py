@@ -106,6 +106,14 @@ def test_format_truncates_long_arg_values_to_40_chars():
 
 
 class FakeBrowser:
+    stopped = False  # the badge's Stop button, read by every tool call
+
+    def ref_key(self, key):
+        return None
+
+    async def mark(self, context, action=None):
+        pass
+
     connected = True
 
     def __init__(self):

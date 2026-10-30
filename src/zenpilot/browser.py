@@ -2,6 +2,8 @@
 
 import asyncio
 import base64
+import json
+import logging
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable
@@ -13,6 +15,7 @@ from urllib.parse import urlsplit
 import websockets
 
 from .bidi import BiDi, BiDiError
+from .devtools import Devtools
 from .safety import load_state, save_state, untrusted
 from .tree import MAX_ITEMS, WALKER_JS, Item, Ref, Refs, mark_unique, render, unwrap
 
@@ -28,6 +31,24 @@ IDLE_RELEASE_SECONDS = 120
 WAITING_SECONDS = 8  # with no tool call for this long, the badge says Claude may be waiting for the user
 READ_RETRIES = 3  # extra read_page attempts, 0.5s apart, while the page is near-empty
 MAX_ADDED, MAX_REMOVED = 15, 8  # lines of page changes shown after an action
+# Console and network events buffered by Devtools, mapped to the Devtools handler for each.
+DEVTOOLS_EVENTS = {
+    "log.entryAdded": "on_log",
+    "network.beforeRequestSent": "on_before_request",
+    "network.responseStarted": "on_response_started",
+    "network.responseCompleted": "on_response_completed",
+    "network.fetchError": "on_fetch_error",
+}
+BODY_MAX_BYTES = 2_000_000  # response bodies above this are not kept by Zen
+# A click that opens a JavaScript dialog blocks Zen's input reply; give up on it sooner than the default.
+CLICK_TIMEOUT = 5
+SCROLL_ROUNDS = 8  # wheel actions a scroll may take to reach its target
+# Action overlay (config show_actions): drawn before click, type and hover. Cosmetic, so short and best effort.
+OVERLAY_JS = (files("zenpilot") / "overlay.js").read_text()
+OVERLAY_TIMEOUT = 2
+SHOW_PAUSE = 0.25  # seconds the page gets to show the cursor before the action
+DIALOG_HINT = "Action sent; page may be showing a dialog — use handle_dialog"
+log = logging.getLogger(__name__)
 
 # The badge (zenpilot's logo and name, so it isn't taken for Claude's own browser extension,
 # and a Stop button) and a glow around the page in the logo's orange.
@@ -195,7 +216,10 @@ FILE_INPUT_JS = """(el) => {
 
 FILE_NAMES_JS = "(f) => [...f.files].map((x) => x.name)"
 
-RECT_JS = "(el) => JSON.stringify(el.getBoundingClientRect())"
+# Center and size of an element in viewport pixels: [x, y, width, height].
+RECT_JS = "(el) => { const r = el.getBoundingClientRect(); return [r.left, r.top, r.width, r.height]; }"
+
+IS_FILE_INPUT_JS = "(el) => el.isConnected && el.tagName === 'INPUT' && el.type === 'file'"
 
 TAB_STATE_JS = "() => [document.title, document.visibilityState, document.hasFocus()]"
 
@@ -412,6 +436,7 @@ class Browser:
         self._saved: dict = {}  # {"next": 5, "tabs": [[tab id, url], ...]} as last seen
         self._session = 0
         self._last_used: str | None = None  # tab zenpilot last opened, switched to or navigated
+        self._prompts: dict[str, tuple[str, str]] = {}  # context -> (type, message) of an open dialog
         self._busy = 0
         self._idle_timer: asyncio.TimerHandle | None = None
         self._waiting_timer: asyncio.TimerHandle | None = None
@@ -421,6 +446,12 @@ class Browser:
         self._acted = 0.0  # when the last input action ended
         self._busy_input = False  # an input action is running
         self.stopped = False  # the user pressed Stop on the badge
+        self._routes: dict[str, dict] = {}  # route id -> url, action, reply, and its intercept id on this session
+        self._route_seq = 0
+        self._answers: set[asyncio.Task] = set()
+        # Mirrors config show_actions; server.py sets it before each tool call. Off until then.
+        self.show_actions = False
+        self.zen_version: str | None = None  # browserVersion from the BiDi session, once connected
 
     # -- connection -------------------------------------------------------
 
@@ -455,6 +486,8 @@ class Browser:
                             "browsingContext.navigationStarted",
                             "browsingContext.load",
                             "browsingContext.contextCreated",
+                            "browsingContext.userPromptOpened",
+                            "browsingContext.userPromptClosed",
                             "script.message",
                         ]
                     },
@@ -462,8 +495,41 @@ class Browser:
             except BaseException:
                 await bidi.close()  # don't leave an orphaned session behind
                 raise
+            try:
+                await self._enable_devtools(bidi)
+                bidi.on("network.beforeRequestSent", lambda p, b=bidi: self._answer_route(b, p))
+                for rid, route in list(self._routes.items()):  # intercepts die with the session
+                    try:
+                        route["intercept"] = await self._add_intercept(bidi, route["url"])
+                    except BrowserError as e:
+                        del self._routes[rid]
+                        log.warning("route %s dropped on reconnect: %s", rid, e)
+            except BaseException:
+                await bidi.close()  # don't leave an orphaned session behind
+                raise
+            self.zen_version = ((session or {}).get("capabilities") or {}).get("browserVersion")
             bidi.on("script.message", self._on_message)
             self._bidi = bidi
+
+    def _on_prompt(self, params: dict) -> None:
+        self._prompts[params["context"]] = (params.get("type", ""), params.get("message", ""))
+
+    def _on_prompt_closed(self, params: dict) -> None:
+        self._prompts.pop(params.get("context"), None)
+
+    async def _enable_devtools(self, bidi: BiDi) -> None:
+        """Buffer console and network events. Best effort: on failure the browser stays usable without them."""
+        self.devtools_error = None
+        for event, handler in DEVTOOLS_EVENTS.items():
+            bidi.on(event, getattr(self.devtools, handler))
+        try:
+            await bidi.send("session.subscribe", {"events": list(DEVTOOLS_EVENTS)})
+            await bidi.send(
+                "network.addDataCollector", {"dataTypes": ["response"], "maxEncodedDataSize": BODY_MAX_BYTES}
+            )
+        except (BiDiError, ConnectionError, TimeoutError) as e:
+            self.devtools_error = str(e) or type(e).__name__
+            log.warning("devtools capture unavailable: %s", self.devtools_error)
 
     def _new_session(self, port: int) -> None:
         """Forget this session's context ids; tabs are matched to their ids on the next getTree."""
@@ -476,6 +542,7 @@ class Browser:
         self._contexts.clear()
         self._outlines.clear()
         self._badges.clear()
+        self._prompts.clear()
         self._session += 1
 
     @property
@@ -764,16 +831,13 @@ class Browser:
             text += f"\n[truncated: showing {max_chars} of {length} characters]"
         return title, text or "[no text]"
 
-    async def screenshot(self, tab: dict) -> bytes:
+    async def screenshot(self, tab: dict, full_page: bool = False) -> bytes:
         await self._badge(tab["context"], "hidden")
+        params = {"context": tab["context"], "format": {"type": "image/jpeg", "quality": 0.8}}
+        if full_page:  # "document" captures the whole page, not just the viewport
+            params["origin"] = "document"
         try:
-            r = await self.call(
-                "browsingContext.captureScreenshot",
-                {
-                    "context": tab["context"],
-                    "format": {"type": "image/jpeg", "quality": 0.8},
-                },
-            )
+            r = await self.call("browsingContext.captureScreenshot", params)
         finally:
             await self.mark(tab["context"])
         return base64.b64decode(r["data"])
@@ -856,10 +920,10 @@ class Browser:
             raise StaleRef(f"Ref {key} is no longer visible. Call read_page again.")
         return tag, kind, cover
 
-    async def _actions(self, ref: Ref, actions: list[dict]) -> None:
+    async def _actions(self, ref: Ref, actions: list[dict], timeout: float = 30) -> None:
         self._busy_input = True
         try:
-            await self.call("input.performActions", {"context": ref.context, "actions": actions})
+            await self.call("input.performActions", {"context": ref.context, "actions": actions}, timeout)
         finally:
             self._busy_input, self._acted = False, time.monotonic()
 
@@ -1174,15 +1238,25 @@ class Browser:
 
     async def click(self, key: str) -> str:
         ref, (_, _, cover), note = await self._target(key, self._prepare)
+        await self._show(ref, "click", "click")
         result = f"Clicked {key}{note}."
         if cover:
             result += f" Note: its center was covered by <{cover}>, which received the click."
-        if nav := await self._settle(ref, lambda: self._click(ref)):
+        try:
+            nav = await self._settle(ref, lambda: self._click(ref, CLICK_TIMEOUT))
+        except BrowserTimeout:
+            # Zen doesn't answer input while a dialog is open; the click itself went through.
+            hint = DIALOG_HINT
+            if dialog := self.dialog_note(self.top_context(ref)):
+                hint = f"{dialog}. {hint}"
+            return hint
+        if nav:
             return result + f" {nav}."
         return result + await self._changes(ref)
 
     async def type(self, key: str, text: str, submit: bool) -> str:
         ref, (tag, kind, _), note = await self._target(key, self._prepare)
+        await self._show(ref, "type", f"type {len(text)} chars")
         if kind in VALUE_INPUTS:
             value = await self.run(ref.context, SET_VALUE_JS, {"sharedId": ref.shared_id}, text)
             if value is None:

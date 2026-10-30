@@ -226,7 +226,7 @@
     }
     if (node.nodeType !== 1) return;
     const el = node;
-    if (SKIP.has(el.tagName) || el.getAttribute("aria-hidden") === "true") return;
+    if (SKIP.has(el.tagName) || el.id === "__zenpilot_overlay" || el.getAttribute("aria-hidden") === "true") return;
     if (popupOwner.has(el)) {
       if (el !== placing) return;  // shown under its combobox instead
       placing = null;

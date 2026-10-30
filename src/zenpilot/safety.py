@@ -65,7 +65,8 @@ report_dir = "~/.local/state/zenpilot/reports"
 audit_redact_urls = false
 
 # Folders whose files the upload tool may put into a page's file inputs, e.g.
-# ["~/Documents/Applications"]. Subfolders count too. Empty: uploads are off.
+# ["~/Documents/Applications"]. Subfolders count too. file_upload may also send files
+# from ~/.local/state/zenpilot/uploads (always allowed). Empty: uploads are off.
 upload_dirs = []
 
 # Which tabs Claude may act on. "strict": only tabs it opened or you gave it with attach_tab.

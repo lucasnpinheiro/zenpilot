@@ -22,7 +22,9 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from . import dialogs
 from .bidi import BiDiError
-from .browser import Browser, BrowserError, FilesRefused
+from .browser import Browser, BrowserError, FilesRefused, parse_keys
+from .devtools import format_console, format_requests, har
+from .history import History, format_history
 from .report import SessionReport
 from .safety import (
     CONFIG_PATH,
@@ -80,6 +82,14 @@ _cfg: ContextVar[Config] = ContextVar("cfg")
 _domain: ContextVar[str | None] = ContextVar("domain", default=None)
 _call: ContextVar[tuple[str, dict]] = ContextVar("call", default=("", {}))
 _marked: ContextVar[str | None] = ContextVar("marked", default=None)  # the tab context the badge shows this call on
+_TOOLS: dict[str, Callable] = {}  # tool name -> wrapper, for browser_batch
+HISTORY = History()  # this run's actions, for action_history
+HISTORY_READ_MAX = 500
+STEP_SHOTS_MAX = 200  # screenshots saved per run when capture_actions is on
+_step_shots = 0  # saved so far in this run
+_shot: ContextVar[str | None] = ContextVar("shot", default=None)  # screenshot path the current call saved
+_resolved_context: ContextVar[str | None] = ContextVar("resolved_context", default=None)  # tab _tab() resolved
+_REDACT: dict[str, tuple[str, ...]] = {}  # tool name -> redact spec, for browser_batch steps
 
 # What the badge says a tool is doing, then has done. {el} is the element's name, {site} the URL's site.
 ACTIONS = {
@@ -136,7 +146,8 @@ def tool(mutates: bool = False, redact: tuple[str, ...] = (), record: bool = Tru
             _domain.set(None)
             _call.set((fn.__name__, kwargs))
             _marked.set(None)
-            start, ok, error, finding = time.perf_counter(), False, None, True
+            shot_token, context_token = _shot.set(None), _resolved_context.set(None)
+            start, ok, error, result, url, finding = time.perf_counter(), False, None, None, None, True
             try:
                 if mutates and cfg.read_only:
                     raise Blocked(f"zenpilot is in read-only mode ({CONFIG_PATH}), so {fn.__name__} is disabled.")
@@ -180,7 +191,6 @@ def tool(mutates: bool = False, redact: tuple[str, ...] = (), record: bool = Tru
                 _resolved_context.reset(context_token)
                 params = _log_params(redact, kwargs, batch)
                 ms = (time.perf_counter() - start) * 1000
-                params = {k: ({"chars": len(v)} if k in redact else v) for k, v in kwargs.items()}
                 if "ref" in kwargs and (element := browser.ref_key(kwargs["ref"])):
                     params["element"] = element
                 try:
@@ -416,6 +426,7 @@ async def new_tab(url: str | None = None) -> str:
     await _mark(tab["context"])
     arrival = ""
     if url:
+        _resolved_context.set(tab["context"])
         arrival = " " + await _arrival(*await browser.navigate(tab, url))
     return f"Opened tab {tab_id}.{arrival}"
 
