@@ -70,6 +70,8 @@ More tools (devtools and claude-in-chrome parity): `read_console_messages`,
 `read_network_requests`, `network_request`, `har_export`, `javascript_tool`, `press_key`,
 `resize_window`, `handle_dialog`, `file_upload`, `find`, `form_input`, `hover`, `wait_for`,
 `network_route`, `network_unroute`, `browser_batch`, `action_history` and `run_report`.
+`capture_page` saves a tab's HAR with bodies, console, DOM text, storage and cookies (httpOnly
+included, kept whole) to the run folder, and hands back only a summary.
 
 ## When it gets stuck
 

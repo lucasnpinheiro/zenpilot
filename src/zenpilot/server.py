@@ -553,6 +553,11 @@ async def read_page(tab_id: str | None = None) -> str:
     and select give for new controls count as this read_page's.
     """
     tab = await _tab(tab_id)
+    return await _page_text(tab)
+
+
+async def _page_text(tab: dict) -> str:
+    """What read_page returns for an already resolved tab."""
     outline = await browser.read_page(tab, _frame_reason)
     if note := browser.dialog_note(tab["context"]):
         outline = f"{note}\n{outline}"
@@ -868,6 +873,54 @@ async def _har_bodies(entries: list[dict]) -> dict[str, str]:
         if not binary:
             bodies[entry["id"]] = text[:HAR_BODY_MAX_CHARS]
     return bodies
+
+
+@tool()
+async def capture_page(tab_id: str | None = None) -> str:
+    """Save a tab's inspect data to the run folder: HAR with bodies, console, DOM text, storage and cookies.
+
+    Writes capture-<n>.har, capture-<n>-console.json, capture-<n>-dom.txt and capture-<n>-storage.json
+    (localStorage, sessionStorage and cookies, httpOnly included, values whole) and returns only a summary.
+    Needs no allow_scripts. A piece that fails is skipped and named in the result.
+    """
+    tab = await _tab(tab_id)
+    run_dir = HISTORY.run_dir()
+    n = 1 + len(list(run_dir.glob("capture-*-console.json")))
+    prefix = run_dir / f"capture-{n}"
+    notes: list[str] = []
+
+    def write(suffix: str, text: str) -> None:
+        Path(f"{prefix}{suffix}").write_text(text, encoding="utf-8")
+
+    entries = browser.devtools.requests(tab["context"])
+    console = browser.devtools.console(tab["context"])
+    try:
+        write(".har", json.dumps(har(entries, await _har_bodies(entries)), ensure_ascii=False, indent=2))
+    except Exception as e:
+        notes.append(f"(har failed: {e})")
+    try:
+        write("-console.json", json.dumps(console, ensure_ascii=False, indent=2))
+    except Exception as e:
+        notes.append(f"(console failed: {e})")
+    try:
+        write("-dom.txt", await _page_text(tab))
+    except Exception as e:
+        notes.append(f"(dom failed: {e})")
+    cookies: list[dict] = []
+    try:
+        cookies = await browser.cookies(tab["context"])
+    except Exception as e:
+        notes.append(f"(cookies failed: {e})")
+    try:
+        store = await browser.storage(tab)
+        data = {"url": tab["url"], **store, "cookies": cookies}
+        write("-storage.json", json.dumps(data, ensure_ascii=False, indent=2))
+    except Exception as e:
+        notes.append(f"(storage failed: {e})")
+    summary = (
+        f"Captured {tab['id']}: {len(entries)} requests, {len(console)} console, {len(cookies)} cookies → {prefix}*"
+    )
+    return " ".join([summary, *notes])
 
 
 @mcp.tool(structured_output=False)

@@ -101,6 +101,10 @@
       "description": "Save a tab's recorded requests as a HAR 1.2 file."
     },
     {
+      "name": "capture_page",
+      "description": "Save a tab's HAR with bodies, console, DOM text, storage and cookies to the run folder."
+    },
+    {
       "name": "report_limitation",
       "description": "Tell the zenpilot developers about something you couldn't do in Zen with these tools."
     },
