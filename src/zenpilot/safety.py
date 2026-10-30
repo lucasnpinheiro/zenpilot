@@ -72,6 +72,12 @@ upload_dirs = []
 # Which tabs Claude may act on. "strict": only tabs it opened or you gave it with attach_tab.
 # "sessions": only blocks tabs another live Claude session is using. "off": no checks.
 tab_ownership = "strict"
+
+# What capture_page writes for cookies. "redact_httponly": every cookie is listed, httpOnly values
+# become "[redacted]" (session tokens stay out of the file). "page": only cookies the page itself
+# can read (document.cookie, no httpOnly). "all": every cookie with its value; this includes other
+# apps' sessions on the same host, e.g. on localhost.
+capture_cookies = "redact_httponly"
 """
 
 # Pages that carry no site content and inherit nothing worth protecting.
@@ -102,6 +108,7 @@ class Config:
     audit_redact_urls: bool = False
     tab_ownership: str = "strict"
     upload_dirs: list[Path] = field(default_factory=list)
+    capture_cookies: str = "redact_httponly"
 
 
 def load_config(path: Path = CONFIG_PATH) -> Config:
@@ -119,6 +126,9 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
     tab_ownership = raw.get("tab_ownership", defaults["tab_ownership"])
     if tab_ownership not in ("strict", "sessions", "off"):
         raise ValueError(f"{path}: tab_ownership must be strict, sessions or off")
+    capture_cookies = raw.get("capture_cookies", defaults["capture_cookies"])
+    if capture_cookies not in ("redact_httponly", "page", "all"):
+        raise ValueError(f"{path}: capture_cookies must be redact_httponly, page or all")
     return Config(
         allowlist=[normalize_domain(d) for d in allowlist if d.strip()],
         read_only=bool(raw.get("read_only", False)),
@@ -135,6 +145,7 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         audit_redact_urls=raw.get("audit_redact_urls", False) is True,
         tab_ownership=tab_ownership,
         upload_dirs=[Path(d).expanduser().resolve() for d in upload_dirs if d.strip()],
+        capture_cookies=capture_cookies,
     )
 
 

@@ -26,6 +26,7 @@ class FakePageBrowser:
         self.url = "http://localhost:8000/"
         self.cookie_error = None
         self.storage_error = None
+        self.cookie_list = [{"name": "sid", "value": "secret", "httpOnly": True}]
         self.storage_data = {"localStorage": {"a": "1"}, "sessionStorage": {"b": "2"}}
 
     def ref_key(self, key):
@@ -53,7 +54,7 @@ class FakePageBrowser:
     async def cookies(self, context):
         if self.cookie_error:
             raise self.cookie_error
-        return [{"name": "sid", "value": "secret", "httpOnly": True}]
+        return list(self.cookie_list)
 
     async def storage(self, tab):
         if self.storage_error:
@@ -82,7 +83,7 @@ def cap(monkeypatch, tmp_path):
     monkeypatch.setattr(server, "HISTORY", hist)
     seed_request(fb.devtools, "r1", "http://localhost:8000/", 200)
     fb.devtools.on_log(console_event("boom", "error"))
-    return types.SimpleNamespace(browser=fb, run_dir=run_dir)
+    return types.SimpleNamespace(browser=fb, run_dir=run_dir, cfg=cfg)
 
 
 async def test_capture_writes_four_files_and_summary(cap):
@@ -101,7 +102,7 @@ async def test_capture_writes_four_files_and_summary(cap):
         "url": "http://localhost:8000/",
         "localStorage": {"a": "1"},
         "sessionStorage": {"b": "2"},
-        "cookies": [{"name": "sid", "value": "secret", "httpOnly": True}],
+        "cookies": [{"name": "sid", "value": "[redacted]", "httpOnly": True}],
     }
 
 
@@ -190,3 +191,54 @@ async def test_browser_cookies_shape_and_partition(fake_bidi):  # noqa: F811
         "expiry": 99,
     }
     assert cookies[1]["value"] == "aGk=" and cookies[1]["encoding"] == "base64"
+
+
+async def test_default_mode_masks_httponly_value_only(cap):
+    cap.browser.cookie_list = [
+        {"name": "sid", "value": "secret", "httpOnly": True},
+        {"name": "theme", "value": "dark", "httpOnly": False},
+    ]
+    out = await server.capture_page()
+    assert out.endswith("2 cookies → " + str(cap.run_dir) + "/capture-1*")
+    st = json.loads((cap.run_dir / "capture-1-storage.json").read_text())
+    assert st["cookies"] == [
+        {"name": "sid", "value": "[redacted]", "httpOnly": True},
+        {"name": "theme", "value": "dark", "httpOnly": False},
+    ]
+
+
+async def test_page_mode_keeps_only_non_httponly_names_in_document_cookie(cap):
+    cap.cfg.capture_cookies = "page"
+    cap.browser.cookie_list = [
+        {"name": "sid", "value": "secret", "httpOnly": True},
+        {"name": "theme", "value": "dark", "httpOnly": False},
+        {"name": "lang", "value": "pt", "httpOnly": False},
+        {"name": "other", "value": "x", "httpOnly": False},
+    ]
+    cap.browser.storage_data = {
+        "localStorage": {},
+        "sessionStorage": {},
+        "cookie": "theme=dark; lang=pt; sid=page-view",
+    }
+    out = await server.capture_page()
+    assert "2 cookies" in out
+    st = json.loads((cap.run_dir / "capture-1-storage.json").read_text())
+    assert st["cookies"] == [
+        {"name": "theme", "value": "dark", "httpOnly": False},
+        {"name": "lang", "value": "pt", "httpOnly": False},
+    ]
+    assert "cookie" not in st
+
+
+async def test_all_mode_keeps_every_cookie_value(cap):
+    cap.cfg.capture_cookies = "all"
+    cap.browser.cookie_list = [
+        {"name": "sid", "value": "secret", "httpOnly": True},
+        {"name": "theme", "value": "dark", "httpOnly": False},
+    ]
+    await server.capture_page()
+    st = json.loads((cap.run_dir / "capture-1-storage.json").read_text())
+    assert st["cookies"] == [
+        {"name": "sid", "value": "secret", "httpOnly": True},
+        {"name": "theme", "value": "dark", "httpOnly": False},
+    ]

@@ -197,6 +197,26 @@ def test_tab_ownership_rejects_other_values(tmp_path):
         load_config(path)
 
 
+def test_capture_cookies_defaults_to_redact_httponly(tmp_path):
+    c = load_config(tmp_path / "config.toml")
+    assert c.capture_cookies == "redact_httponly"
+    assert 'capture_cookies = "redact_httponly"' in (tmp_path / "config.toml").read_text()
+
+
+@pytest.mark.parametrize("value", ["redact_httponly", "page", "all"])
+def test_capture_cookies_accepts_valid_values(tmp_path, value):
+    path = tmp_path / "config.toml"
+    path.write_text(f'capture_cookies = "{value}"\n')
+    assert load_config(path).capture_cookies == value
+
+
+def test_capture_cookies_rejects_other_values(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text('capture_cookies = "some"\n')
+    with pytest.raises(ValueError, match="capture_cookies must be redact_httponly, page or all"):
+        load_config(path)
+
+
 def test_claim_owner_release_roundtrip():
     assert safety.owner_of(9222, "t1") is None
     safety.claim(9222, "t1")

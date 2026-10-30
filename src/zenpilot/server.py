@@ -880,7 +880,7 @@ async def capture_page(tab_id: str | None = None) -> str:
     """Save a tab's inspect data to the run folder: HAR with bodies, console, DOM text, storage and cookies.
 
     Writes capture-<n>.har, capture-<n>-console.json, capture-<n>-dom.txt and capture-<n>-storage.json
-    (localStorage, sessionStorage and cookies, httpOnly included, values whole) and returns only a summary.
+    (localStorage, sessionStorage and cookies, shaped by capture_cookies in config) and returns only a summary.
     Needs no allow_scripts. A piece that fails is skipped and named in the result.
     """
     tab = await _tab(tab_id)
@@ -911,16 +911,34 @@ async def capture_page(tab_id: str | None = None) -> str:
         cookies = await browser.cookies(tab["context"])
     except Exception as e:
         notes.append(f"(cookies failed: {e})")
+    written: list[dict] = []
     try:
         store = await browser.storage(tab)
-        data = {"url": tab["url"], **store, "cookies": cookies}
+        page_names = _cookie_names(store.pop("cookie", ""))
+        written = _cookies_for_mode(cookies, load_config().capture_cookies, page_names)
+        data = {"url": tab["url"], **store, "cookies": written}
         write("-storage.json", json.dumps(data, ensure_ascii=False, indent=2))
     except Exception as e:
         notes.append(f"(storage failed: {e})")
     summary = (
-        f"Captured {tab['id']}: {len(entries)} requests, {len(console)} console, {len(cookies)} cookies → {prefix}*"
+        f"Captured {tab['id']}: {len(entries)} requests, {len(console)} console, {len(written)} cookies → {prefix}*"
     )
     return " ".join([summary, *notes])
+
+
+def _cookie_names(header: str) -> set[str]:
+    """Names from a document.cookie string: 'a=1; b=2' -> {'a', 'b'}."""
+    return {part.split("=", 1)[0].strip() for part in header.split(";") if part.strip()}
+
+
+def _cookies_for_mode(cookies: list[dict], mode: str, page_names: set[str]) -> list[dict]:
+    """Apply capture_cookies: redact_httponly masks httpOnly values, page keeps only the names
+    the page reads itself (document.cookie, no httpOnly), all keeps everything."""
+    if mode == "redact_httponly":
+        return [{**c, "value": "[redacted]"} if c.get("httpOnly") else c for c in cookies]
+    if mode == "page":
+        return [c for c in cookies if not c.get("httpOnly") and c.get("name") in page_names]
+    return list(cookies)
 
 
 @mcp.tool(structured_output=False)

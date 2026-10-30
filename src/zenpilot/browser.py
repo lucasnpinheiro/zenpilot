@@ -356,7 +356,8 @@ _STORAGE_SCRIPT = (
     " catch (e) {} return o; };"
     " let l = {}, x = {}; try { l = cut(window.localStorage); } catch (e) {}"
     " try { x = cut(window.sessionStorage); } catch (e) {}"
-    " return JSON.stringify({localStorage: l, sessionStorage: x}); })()"
+    " let c = ''; try { c = String(document.cookie); } catch (e) {}"
+    " return JSON.stringify({localStorage: l, sessionStorage: x, cookie: c}); })()"
 )
 
 
@@ -890,6 +891,7 @@ class Browser:
             cut[kind] = {
                 k: (v if len(v) <= STORAGE_VALUE_MAX else v[:STORAGE_VALUE_MAX] + "…") for k, v in items.items()
             }
+        cut["cookie"] = str(data.get("cookie") or "")  # document.cookie, for capture_cookies=page
         return cut
 
     # -- input ----------------------------------------------------------------
