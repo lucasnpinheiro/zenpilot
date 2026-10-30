@@ -2,7 +2,9 @@
 
 import contextlib
 import json
+import shutil
 import socket
+import subprocess
 
 import pytest
 from test_interact_tools import FakeBiDi, connected_browser, sent
@@ -267,3 +269,158 @@ async def test_tool_call_sets_browser_show_actions_from_config(monkeypatch, tmp_
     monkeypatch.setattr(server, "browser", probe)
     await server.list_tabs()
     assert probe.seen == [on]
+
+
+# -- cursor arrow and slide (T-010) -------------------------------------------
+
+NODE = shutil.which("node")
+
+# Minimal DOM stand-in: enough for overlay.js. Records every style write on each element.
+OVERLAY_HARNESS = r"""
+const src = process.argv[1];
+const calls = JSON.parse(process.argv[2]);
+const byId = {};
+function mkStyle(el) {
+  return new Proxy({}, {
+    set(t, k, v) {
+      el.writes.push([k, String(v)]);
+      if (k === "cssText") {
+        for (const decl of String(v).split(";")) {
+          const i = decl.indexOf(":");
+          if (i > 0) t[decl.slice(0, i).trim()] = decl.slice(i + 1).trim();
+        }
+      } else {
+        t[k] = v;
+      }
+      return true;
+    },
+  });
+}
+function mk(tag, ns) {
+  const el = { tag, ns, children: [], writes: [], attrs: {}, dataset: {}, isConnected: false, textContent: "" };
+  el.style = mkStyle(el);
+  el.setAttribute = (k, v) => { el.attrs[k] = String(v); };
+  el.append = (...n) => n.forEach((c) => el.appendChild(c));
+  el.appendChild = (c) => { el.children.push(c); c.parent = el; mark(c, true); return c; };
+  el.remove = () => { mark(el, false); };
+  el.querySelector = (sel) => find(el, sel.match(/data-part="(\w+)"/)[1]);
+  return el;
+}
+function mark(el, on) { el.isConnected = on; if (el.id) byId[el.id] = on ? el : undefined; el.children.forEach((c) => mark(c, on)); }
+function find(el, part) {
+  if (el.dataset.part === part) return el;
+  for (const c of el.children) { const f = find(c, part); if (f) return f; }
+  return null;
+}
+const docEl = mk("html");
+docEl.isConnected = true;
+global.window = { innerWidth: 1000, innerHeight: 800 };
+global.setTimeout = () => 0;
+global.clearTimeout = () => {};
+global.document = {
+  documentElement: docEl,
+  getElementById: (id) => byId[id] || null,
+  createElement: (tag) => mk(tag, "html"),
+  createElementNS: (ns, tag) => mk(tag, ns),
+};
+const overlay = eval("(" + src + ")");
+const out = { calls: [] };
+let root = null;
+for (const c of calls) {
+  const before = document.getElementById("__zenpilot_overlay");
+  const startLeft = before ? find(before, "cursor").style.left : undefined;
+  const startTop = before ? find(before, "cursor").style.top : undefined;
+  const writesBefore = before ? find(before, "cursor").writes.length : 0;
+  overlay(c.x, c.y, c.kind, "lbl", c.rect);
+  root = document.getElementById("__zenpilot_overlay");
+  const cursor = find(root, "cursor");
+  const ripples = root.children.filter((e) => String(e.style.animation || "").includes("__zp_ripple")).length;
+  out.calls.push({
+    sameRoot: before === null ? null : before === root,
+    startLeft, startTop,
+    writes: cursor.writes.slice(writesBefore),
+    left: cursor.style.left, top: cursor.style.top,
+    transition: cursor.style.transition,
+    svgTag: cursor.children[0] ? cursor.children[0].tag : null,
+    svgNs: cursor.children[0] ? cursor.children[0].ns : null,
+    svgAttrs: cursor.children[0] ? cursor.children[0].attrs : null,
+    ripples,
+  });
+}
+console.log(JSON.stringify(out));
+"""
+
+
+def run_overlay(calls):
+    """Run overlay.js in node against the stand-in DOM; calls = [{x, y, kind, rect}, ...]."""
+    out = subprocess.run(
+        [NODE, "-e", OVERLAY_HARNESS, browser_mod.OVERLAY_JS, json.dumps(calls)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(out.stdout)["calls"]
+
+
+RECT = {"x": 10, "y": 20, "w": 100, "h": 40}
+needs_node = pytest.mark.skipif(NODE is None, reason="node not installed")
+
+
+@needs_node
+def test_cursor_is_svg_arrow_20px_with_fill_and_white_stroke():
+    (c,) = run_overlay([{"x": 60, "y": 40, "kind": "click", "rect": RECT}])
+    assert c["svgTag"] == "svg"
+    assert c["svgNs"] == "http://www.w3.org/2000/svg"
+    assert c["svgAttrs"]["width"] == "20" and c["svgAttrs"]["height"] == "20"
+    assert "#e8590c" in browser_mod.OVERLAY_JS
+    assert 'stroke", "#fff"' in browser_mod.OVERLAY_JS or "#fff" in browser_mod.OVERLAY_JS
+
+
+@needs_node
+def test_cursor_transition_slides_left_and_top_250ms():
+    (c,) = run_overlay([{"x": 60, "y": 40, "kind": "click", "rect": RECT}])
+    assert "left 250ms" in c["transition"]
+    assert "top 250ms" in c["transition"]
+
+
+@needs_node
+def test_cursor_ends_on_the_point_tip_top_left():
+    (c,) = run_overlay([{"x": 60, "y": 40, "kind": "click", "rect": RECT}])
+    assert (c["left"], c["top"]) == ("60px", "40px")
+
+
+@needs_node
+def test_first_call_cursor_starts_at_viewport_center():
+    (c,) = run_overlay([{"x": 60, "y": 40, "kind": "click", "rect": RECT}])
+    lefts = [v for k, v in c["writes"] if k == "left"]
+    tops = [v for k, v in c["writes"] if k == "top"]
+    assert lefts[0] == "500px" and tops[0] == "400px"  # center first, then the target
+    assert lefts[-1] == "60px" and tops[-1] == "40px"
+
+
+@needs_node
+def test_second_call_slides_from_previous_position():
+    first, second = run_overlay(
+        [
+            {"x": 60, "y": 40, "kind": "click", "rect": RECT},
+            {"x": 300, "y": 200, "kind": "hover", "rect": RECT},
+        ]
+    )
+    assert second["sameRoot"] is True  # root reused, not rebuilt
+    assert (second["startLeft"], second["startTop"]) == ("60px", "40px")
+    assert (second["left"], second["top"]) == ("300px", "200px")
+    assert ["left", "500px"] not in second["writes"]  # no re-centering on later calls
+
+
+@needs_node
+@pytest.mark.parametrize(
+    ("kind", "ripples"),
+    [("drag", 0), ("move", 0), ("right", 1), ("double", 2), ("click", 1)],
+)
+def test_new_kinds_and_ripples(kind, ripples):
+    (c,) = run_overlay([{"x": 60, "y": 40, "kind": kind, "rect": RECT}])
+    assert c["ripples"] == ripples
+
+
+def test_show_pause_waits_for_the_slide():
+    assert browser_mod.SHOW_PAUSE >= 0.25
