@@ -1,10 +1,10 @@
 ---
 status: TODO
-progress: 0/1
+progress: 0/2
 updated: 2026-10-29
 ---
 # business-rules
 | # | Regra | Teste | Crit. |
 | --- | --- | --- | --- |
 | B1 | a saída humana de `allow` não muda | snapshot do texto antes/depois | 3 |
-| B2 | uma gravação nunca passa de 500 frames | U7 | 9 |
+| B2 | o GIF não acrescenta texto digitado | o GIF só usa `step-*.jpg`; nenhum arg é desenhado | 10 |

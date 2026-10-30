@@ -7,20 +7,19 @@ Funcionalidade: Gravação da sessão e allowlist legível por máquina
     Quando o usuário roda "zenpilot allow --json"
     Então recebe a allowlist, as grants vigentes e allow_all_sites em JSON
 
-  Cenário: Gravar e rever (sucesso)
-    Dado que o usuário rodou "zenpilot record start"
-    Quando o Claude navega, clica e digita no Zen
-    E o usuário roda "zenpilot record stop"
-    Então existe um recording.html com um frame por ação, sem o texto digitado
+  Cenário: GIF do run (sucesso)
+    Dado que o Claude navegou e clicou no Zen
+    Quando o usuário roda "zenpilot gif"
+    Então existe um recording.gif com um frame por ação
 
-  Cenário: Parar sem gravar (erro)
-    Quando o usuário roda "zenpilot record stop" sem gravação ativa
-    Então a resposta é "Not recording"
+  Cenário: GIF sem screenshots (erro)
+    Quando o usuário roda "zenpilot gif" num run sem screenshots
+    Então a resposta é "No step screenshots"
 
   Cenário: GIF sem Pillow (desvio)
     Dado que o Pillow não está instalado
-    Quando a gravação é parada
-    Então só o HTML é gerado e a mensagem ensina "zenpilot[gif]"
+    Quando o usuário roda "zenpilot gif"
+    Então a mensagem ensina "zenpilot[gif]"
 
   Cenário: Claude não age em aba alheia (erro)
     Dado que o usuário abriu uma aba logada no banco
